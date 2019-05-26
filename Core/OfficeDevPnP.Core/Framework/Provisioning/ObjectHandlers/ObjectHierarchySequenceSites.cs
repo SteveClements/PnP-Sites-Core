@@ -260,12 +260,13 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         {
                                             siteTokenParser.AddToken(token);
                                         }
-                                        //}
-                                        //else
-                                        //{
-                                        //    siteTokenParser.Rebase(web, provisioningTemplate);
-                                        //}
-                                        WriteMessage($"Applying Template", ProvisioningMessageType.Progress);
+										//}
+										//else
+										//{
+										//    siteTokenParser.Rebase(web, provisioningTemplate);
+										//}
+										string templateIdentifier = String.IsNullOrWhiteSpace(provisioningTemplate.DisplayName) ? provisioningTemplate.Id : provisioningTemplate.DisplayName;
+                                        WriteMessage($"Applying Template - {templateIdentifier}", ProvisioningMessageType.Progress);
                                         new SiteToTemplateConversion().ApplyRemoteTemplate(web, provisioningTemplate, provisioningTemplateApplyingInformation, true, siteTokenParser);
                                     }
                                     else
@@ -360,8 +361,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 
             var subweb = web.Webs.FirstOrDefault(t => t.ServerRelativeUrl.Equals(UrlUtility.Combine(web.ServerRelativeUrl, "/", url.Trim(new char[] { '/' }))));
 
-            foreach (var templateRef in sitecollection.Templates)
-            {
+			foreach (var templateRef in subSiteObject.Templates)
+			{
                 var provisioningTemplate = hierarchy.Templates.FirstOrDefault(t => t.Id == templateRef);
                 if (provisioningTemplate != null)
                 {
@@ -374,7 +375,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                     {
                         tokenParser.Rebase(subweb, provisioningTemplate, provisioningTemplateApplyingInformation);
                     }
-                    new SiteToTemplateConversion().ApplyRemoteTemplate(subweb, provisioningTemplate, provisioningTemplateApplyingInformation, true, tokenParser);
+					string templateIdentifier = String.IsNullOrWhiteSpace(provisioningTemplate.DisplayName) ? provisioningTemplate.Id : provisioningTemplate.DisplayName;
+					WriteMessage($"Applying Template to subsite - {templateIdentifier}", ProvisioningMessageType.Progress);
+					new SiteToTemplateConversion().ApplyRemoteTemplate(subweb, provisioningTemplate, provisioningTemplateApplyingInformation, true, tokenParser);
                 }
                 else
                 {
