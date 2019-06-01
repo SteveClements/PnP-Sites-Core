@@ -86,7 +86,11 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         _additionalTokens.Add(new SequenceSiteCollectionIdToken(null, t.ProvisioningId, siteContext.Site.Id));
                                         _additionalTokens.Add(new SequenceSiteGroupIdToken(null, t.ProvisioningId, siteContext.Site.GroupId));
                                     }
-                                    break;
+
+									WriteMessage("Waking up site", ProvisioningMessageType.Progress);
+									System.Threading.Thread.Sleep(5000);
+
+									break;
                                 }
                             case CommunicationSiteCollection c:
                                 {
@@ -133,27 +137,63 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         WriteMessage($"Creating Communications Site at {siteInfo.Url}", ProvisioningMessageType.Progress);
                                         siteContext = Sites.SiteCollection.Create(tenant.Context as ClientContext, siteInfo);
                                     }
-                                    if (c.IsHubSite)
-                                    {
-                                        RegisterAsHubSite(tenant, siteInfo.Url, c.HubSiteLogoUrl);
-                                    }
-                                    if (!string.IsNullOrEmpty(c.Theme))
-                                    {
-                                        var parsedTheme = tokenParser.ParseString(c.Theme);
-                                        tenant.SetWebTheme(parsedTheme, siteInfo.Url);
-                                        tenant.Context.ExecuteQueryRetry();
-                                    }
-                                    siteUrls.Add(c.Id, siteInfo.Url);
-                                    if (!string.IsNullOrEmpty(c.ProvisioningId))
-                                    {
-                                        _additionalTokens.Add(new SequenceSiteUrlUrlToken(null, c.ProvisioningId, siteInfo.Url));
-                                        siteContext.Web.EnsureProperty(w => w.Id);
-                                        _additionalTokens.Add(new SequenceSiteIdToken(null, c.ProvisioningId, siteContext.Web.Id));
-                                        siteContext.Site.EnsureProperties(s => s.Id, s => s.GroupId);
-                                        _additionalTokens.Add(new SequenceSiteCollectionIdToken(null, c.ProvisioningId, siteContext.Site.Id));
-                                        _additionalTokens.Add(new SequenceSiteGroupIdToken(null, c.ProvisioningId, siteContext.Site.GroupId));
-                                    }
-                                    break;
+
+									
+									bool siteFound = false;
+									int tries = 0;
+									const int MAX_TRIES = 10;
+
+									do
+									{
+										tries++;
+										try
+										{
+											if (c.IsHubSite)
+											{
+												RegisterAsHubSite(tenant, siteInfo.Url, c.HubSiteLogoUrl);
+											}
+											if (!string.IsNullOrEmpty(c.Theme))
+											{
+												string parsedTheme = "";
+												try
+												{
+													parsedTheme = tokenParser.ParseString(c.Theme);
+													tenant.SetWebTheme(parsedTheme, siteInfo.Url);
+													tenant.Context.ExecuteQueryRetry();
+												}
+												catch (Exception themeEx)
+												{
+													WriteMessage($"Could not set theme '{parsedTheme}'. - {themeEx.Message}", ProvisioningMessageType.Error);
+													throw;
+												}
+											}
+											if(!siteUrls.ContainsKey(c.Id))
+												siteUrls.Add(c.Id, siteInfo.Url);
+
+											if (!string.IsNullOrEmpty(c.ProvisioningId))
+											{
+												_additionalTokens.Add(new SequenceSiteUrlUrlToken(null, c.ProvisioningId, siteInfo.Url));
+												siteContext.Web.EnsureProperty(w => w.Id);
+												_additionalTokens.Add(new SequenceSiteIdToken(null, c.ProvisioningId, siteContext.Web.Id));
+												siteContext.Site.EnsureProperties(s => s.Id, s => s.GroupId);
+												_additionalTokens.Add(new SequenceSiteCollectionIdToken(null, c.ProvisioningId, siteContext.Site.Id));
+												_additionalTokens.Add(new SequenceSiteGroupIdToken(null, c.ProvisioningId, siteContext.Site.GroupId));
+											}
+
+											siteFound = true;
+										}
+										catch (Exception ex)
+										{
+											WriteMessage($"Could not load site.  Attempt '{tries}' / '{MAX_TRIES}'. - {ex.Message}", ProvisioningMessageType.Progress);
+											System.Threading.Thread.Sleep(5000);
+											siteContext = Sites.SiteCollection.Create(tenant.Context as ClientContext, siteInfo);
+											siteFound = false;
+										}
+									}
+									while (!siteFound && tries <= MAX_TRIES);
+
+									
+									break;
                                 }
                             case TeamNoGroupSiteCollection t:
                                 {
@@ -198,7 +238,10 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         _additionalTokens.Add(new SequenceSiteCollectionIdToken(null, t.ProvisioningId, siteContext.Site.Id));
                                         _additionalTokens.Add(new SequenceSiteGroupIdToken(null, t.ProvisioningId, siteContext.Site.GroupId));
                                     }
-                                    break;
+
+									WriteMessage("Waking up site", ProvisioningMessageType.Progress);
+									System.Threading.Thread.Sleep(5000);
+									break;
                                 }
                         }
 
@@ -260,12 +303,13 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         {
                                             siteTokenParser.AddToken(token);
                                         }
-                                        //}
-                                        //else
-                                        //{
-                                        //    siteTokenParser.Rebase(web, provisioningTemplate);
-                                        //}
-                                        WriteMessage($"Applying Template", ProvisioningMessageType.Progress);
+										//}
+										//else
+										//{
+										//    siteTokenParser.Rebase(web, provisioningTemplate);
+										//}
+										string templateIdentifier = String.IsNullOrWhiteSpace(provisioningTemplate.DisplayName) ? provisioningTemplate.Id : provisioningTemplate.DisplayName;
+										WriteMessage($"Applying Template - {templateIdentifier}", ProvisioningMessageType.Progress);
                                         new SiteToTemplateConversion().ApplyRemoteTemplate(web, provisioningTemplate, provisioningTemplateApplyingInformation, true, siteTokenParser);
                                     }
                                     else

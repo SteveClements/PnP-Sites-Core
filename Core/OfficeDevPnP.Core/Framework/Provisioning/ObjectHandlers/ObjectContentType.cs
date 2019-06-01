@@ -238,18 +238,13 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 			// Should child content types be updated.
 			bool UpdateChildren()
 			{
-				if(fieldsNotPresentInTarget.Any())
-				{
-					return !templateContentType.FieldRefs.All(f => f.UpdateChildren == false);
-				}
-
-				return true;
+				return templateContentType.FieldRefs.Any(f => f.UpdateChildren == true);
 			}
 			
 			if (fieldsNotPresentInTarget.Any())
             {
                 // Set flag to reorder fields when new fields are added.
-                reOrderFields = true;
+                //reOrderFields = true;
 
                 foreach (var fieldId in fieldsNotPresentInTarget)
                 {
@@ -327,8 +322,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 
             if (isDirty)
             {
-				scope.LogDebug("Update child Content Types: {0}", UpdateChildren());
-				existingContentType.Update(UpdateChildren());
+				var updateChildren = UpdateChildren();
+				scope.LogInfo("Update Child Content Types: '{0}'", updateChildren);
+				existingContentType.Update(updateChildren);
                 web.Context.ExecuteQueryRetry();
             }
         }

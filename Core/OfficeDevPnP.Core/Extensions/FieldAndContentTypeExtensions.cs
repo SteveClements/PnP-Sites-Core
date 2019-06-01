@@ -1110,7 +1110,7 @@ namespace Microsoft.SharePoint.Client
                 // Update FieldLink
                 flink.Required = required;
                 flink.Hidden = hidden;
-                contentType.Update(true);
+                contentType.Update(updateChildren);
                 web.Context.ExecuteQueryRetry();
             }
         }
