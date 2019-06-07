@@ -1,4 +1,5 @@
-﻿using Microsoft.SharePoint.Client.Search.Administration;
+﻿using Microsoft.Online.SharePoint.TenantAdministration;
+using Microsoft.SharePoint.Client.Search.Administration;
 using Microsoft.SharePoint.Client.Search.Portability;
 using System;
 using System.IO;
@@ -58,13 +59,23 @@ namespace Microsoft.SharePoint.Client
             return GetSearchConfigurationImplementation(site.Context, SearchObjectLevel.SPSite);
         }
 
-        /// <summary>
-        /// Returns the current search configuration for the specified object level
-        /// </summary>
-        /// <param name="context">ClinetRuntimeContext for SharePoint objects and operations</param>
-        /// <param name="searchSettingsObjectLevel">A site server level value. i.e, SPWeb/SPSite/SPSiteSubscription/Ssa</param>
-        /// <returns>Returns search configuration</returns>
-        private static string GetSearchConfigurationImplementation(ClientRuntimeContext context, SearchObjectLevel searchSettingsObjectLevel)
+		/// <summary>
+		/// Returns the current search configuration as as string
+		/// </summary>
+		/// <param name="tenant">A SharePoint tenant</param>
+		/// <returns>Returns search configuration</returns>
+		public static string GetSearchConfiguration(this Tenant tenant)
+		{
+			return GetSearchConfigurationImplementation(tenant.Context, SearchObjectLevel.SPSiteSubscription);
+		}
+
+		/// <summary>
+		/// Returns the current search configuration for the specified object level
+		/// </summary>
+		/// <param name="context">ClinetRuntimeContext for SharePoint objects and operations</param>
+		/// <param name="searchSettingsObjectLevel">A site server level value. i.e, SPWeb/SPSite/SPSiteSubscription/Ssa</param>
+		/// <returns>Returns search configuration</returns>
+		private static string GetSearchConfigurationImplementation(ClientRuntimeContext context, SearchObjectLevel searchSettingsObjectLevel)
         {
             SearchConfigurationPortability sconfig = new SearchConfigurationPortability(context);
             SearchObjectOwner owner = new SearchObjectOwner(context, searchSettingsObjectLevel);
@@ -149,13 +160,18 @@ namespace Microsoft.SharePoint.Client
             SetSearchConfigurationImplementation(site.Context, SearchObjectLevel.SPSite, searchConfiguration);
         }
 
-        /// <summary>
-        /// Sets the search configuration at the specified object level
-        /// </summary>
-        /// <param name="context"></param>
-        /// <param name="searchObjectLevel"></param>
-        /// <param name="searchConfiguration"></param>
-        private static void SetSearchConfigurationImplementation(ClientRuntimeContext context, SearchObjectLevel searchObjectLevel, string searchConfiguration)
+		public static void SetSearchConfiguration(this Tenant tenant, string searchConfiguration)
+		{
+			SetSearchConfigurationImplementation(tenant.Context, SearchObjectLevel.SPSiteSubscription, searchConfiguration);
+		}
+
+		/// <summary>
+		/// Sets the search configuration at the specified object level
+		/// </summary>
+		/// <param name="context"></param>
+		/// <param name="searchObjectLevel"></param>
+		/// <param name="searchConfiguration"></param>
+		private static void SetSearchConfigurationImplementation(ClientRuntimeContext context, SearchObjectLevel searchObjectLevel, string searchConfiguration)
         {
 #if ONPREMISES
             if (searchObjectLevel == SearchObjectLevel.Ssa)
