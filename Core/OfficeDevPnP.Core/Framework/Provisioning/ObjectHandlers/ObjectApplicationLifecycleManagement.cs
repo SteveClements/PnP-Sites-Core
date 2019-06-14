@@ -56,11 +56,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                 if (template.ApplicationLifecycleManagement != null)
                 {
                     var manager = new AppManager(web.Context as ClientContext);
-
-                    // The ALM API do not support the local Site Collection App Catalog
-                    // Thus, so far we skip the AppCatalog section
-                    // NOOP
-
+					                    
                     if (template.ApplicationLifecycleManagement.Apps != null &&
                         template.ApplicationLifecycleManagement.Apps.Count > 0)
                     {
@@ -70,17 +66,41 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                         {
                             // Get the apps already installed in the site
                             var siteApps = manager.GetAvailable()?.Where(a => a.InstalledVersion != null)?.ToList();
+							var siteAppsSiteCollection = manager.GetAvailable(Enums.AppCatalogScope.Site)?.Where(a => a.InstalledVersion != null)?.ToList();
 
-                            foreach (var app in template.ApplicationLifecycleManagement.Apps)
+							var allAppsTenant = manager.GetAvailable().ToList();
+							var allAppsSiteCollection = manager.GetAvailable(Enums.AppCatalogScope.Site).ToList();
+
+							Enums.AppCatalogScope GetAppScope(Guid appId)
+							{
+								if(allAppsTenant.Any(a => a.Id == appId))
+								{
+									return Enums.AppCatalogScope.Tenant;
+								}
+								else if (allAppsSiteCollection.Any(a => a.Id == appId))
+								{
+									return Enums.AppCatalogScope.Site;
+								}
+								// Should probably make this nullable, but doing this will just let it fall through the normal exceptions.
+								return Enums.AppCatalogScope.Tenant;
+							}
+
+							foreach (var app in template.ApplicationLifecycleManagement.Apps)
                             {
                                 var appId = Guid.Parse(parser.ParseString(app.AppId));
                                 var alreadyExists = siteApps.Any(a => a.Id == appId);
+								if(!alreadyExists)
+								{
+									// Check site collection app catalog
+									alreadyExists = siteAppsSiteCollection.Any(a => a.Id == appId);
+								}
+
                                 var working = false;
 
                                 if (app.Action == AppAction.Install && !alreadyExists)
                                 {
-                                    manager.Install(appId);
-                                    working = true;
+									manager.Install(appId, GetAppScope(appId));
+									working = true;
                                 }
                                 else if (app.Action == AppAction.Install && alreadyExists)
                                 {
@@ -88,7 +108,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                 }
                                 else if (app.Action == AppAction.Uninstall && alreadyExists)
                                 {
-                                    manager.Uninstall(appId);
+                                    manager.Uninstall(appId, GetAppScope(appId));
                                     working = true;
                                 }
                                 else if (app.Action == AppAction.Uninstall && !alreadyExists)
@@ -97,7 +117,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                 }
                                 else if (app.Action == AppAction.Update && alreadyExists)
                                 {
-                                    manager.Upgrade(appId);
+                                    manager.Upgrade(appId, GetAppScope(appId));
                                     working = true;
                                 }
                                 else if (app.Action == AppAction.Update && !alreadyExists)
@@ -114,7 +134,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         case AppAction.Install:
                                         case AppAction.Update:
                                             {
-                                                PollforAppInstalled(manager, appId);
+                                                PollforAppInstalled(manager, appId, GetAppScope(appId));
                                                 break;
                                             }
                                         case AppAction.Uninstall:
@@ -137,15 +157,15 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
             return parser;
         }
 
-        private void PollforAppInstalled(AppManager manager, Guid appId)
+        private void PollforAppInstalled(AppManager manager, Guid appId, Enums.AppCatalogScope scope = Enums.AppCatalogScope.Tenant)
         {
             Stopwatch sw = new Stopwatch();
             sw.Start();
-            var appMetadata = manager.GetAvailable(appId, Enums.AppCatalogScope.Tenant);
+            var appMetadata = manager.GetAvailable(appId, scope);
             while (appMetadata.AppCatalogVersion != appMetadata.InstalledVersion && sw.ElapsedMilliseconds < 1000 * 60 * 5)
             {
                 System.Threading.Thread.Sleep(5000); // sleep 5 seconds and try again
-                appMetadata = manager.GetAvailable(appId, Enums.AppCatalogScope.Tenant);
+                appMetadata = manager.GetAvailable(appId, scope);
             }
             if(appMetadata.AppCatalogVersion != appMetadata.InstalledVersion)
             {
@@ -184,8 +204,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                   template.ApplicationLifecycleManagement.Apps.Count > 0
                                  );
             }
-            return (!web.IsSubSite() && _willProvision.Value);
-        }
+			//return (!web.IsSubSite() && _willProvision.Value);
+			return (_willProvision.Value);
+		}
     }
 #endif
 }
