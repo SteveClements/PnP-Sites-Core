@@ -1113,6 +1113,10 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                     WriteMessage(warning, ProvisioningMessageType.Warning);
                 }
             }
+			else
+			{
+				field = existingField;
+			}
             return field;
         }
 
