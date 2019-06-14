@@ -104,7 +104,25 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                 _tokens.RemoveAll(t => t is RoleDefinitionToken || t is RoleDefinitionIdToken);
                 AddRoleDefinitionTokens(web);
             }
-        }
+
+			if (tokenIds.Contains("guid"))
+				_tokens.Add(new GuidToken(web));
+			if (tokenIds.Contains("now"))
+				_tokens.Add(new DateNowToken(web));
+			if (tokenIds.Contains("currentuserid"))
+				_tokens.Add(new CurrentUserIdToken(web));
+			if (tokenIds.Contains("currentuserloginname"))
+				_tokens.Add(new CurrentUserLoginNameToken(web));
+			if (tokenIds.Contains("currentuserfullname"))
+				_tokens.Add(new CurrentUserFullNameToken(web));
+			if (tokenIds.Contains("authenticationrealm"))
+				_tokens.Add(new AuthenticationRealmToken(web));
+			if (tokenIds.Contains("hosturl"))
+				_tokens.Add(new HostUrlToken(web));
+			if (tokenIds.Contains("siteid"))
+				_tokens.Add(new SiteIdToken(web));
+			
+		}
 
         public TokenParser(Tenant tenant, Model.ProvisioningHierarchy hierarchy) :
             this(tenant, hierarchy, null)
@@ -489,12 +507,17 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
             try
             {
                 var appPackages = manager.GetAvailable();
+				var siteCollectionAppPackages = manager.GetAvailable(Enums.AppCatalogScope.Site);
 
                 foreach (var app in appPackages)
                 {
                     _tokens.Add(new AppPackageIdToken(web, app.Title, app.Id));
                 }
-            }
+				foreach (var app in siteCollectionAppPackages)
+				{
+					_tokens.Add(new AppPackageIdToken(web, app.Title, app.Id));
+				}
+			}
             catch (Exception)
             {
                 // In case of any failure, just skip creating AppPackageIdToken instances
