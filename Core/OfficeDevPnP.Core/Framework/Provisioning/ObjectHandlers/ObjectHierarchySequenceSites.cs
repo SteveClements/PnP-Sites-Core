@@ -87,8 +87,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         _additionalTokens.Add(new SequenceSiteGroupIdToken(null, t.ProvisioningId, siteContext.Site.GroupId));
                                     }
 
-									WriteMessage("Waking up site", ProvisioningMessageType.Progress);
-									System.Threading.Thread.Sleep(5000);
+									//WriteMessage("Waking up site", ProvisioningMessageType.Progress);
+									//System.Threading.Thread.Sleep(5000);
 
 									break;
                                 }
@@ -143,6 +143,14 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 									int tries = 0;
 									const int MAX_TRIES = 10;
 
+									void AddAdditionalToken(TokenDefinition tokenDefinition)
+									{
+										if(!_additionalTokens.Contains(tokenDefinition))
+										{
+											_additionalTokens.Add(tokenDefinition);
+										}
+									}
+
 									do
 									{
 										tries++;
@@ -150,7 +158,15 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 										{
 											if (c.IsHubSite)
 											{
-												RegisterAsHubSite(tenant, siteInfo.Url, c.HubSiteLogoUrl);
+												try
+												{
+													RegisterAsHubSite(tenant, siteInfo.Url, c.HubSiteLogoUrl);
+												}
+												catch(Exception hubEx)
+												{
+													WriteMessage($"Could not register '{siteInfo.Url}' as a hub site", ProvisioningMessageType.Error);
+													throw hubEx;
+												}
 											}
 											if (!string.IsNullOrEmpty(c.Theme))
 											{
@@ -172,19 +188,48 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 
 											if (!string.IsNullOrEmpty(c.ProvisioningId))
 											{
-												_additionalTokens.Add(new SequenceSiteUrlUrlToken(null, c.ProvisioningId, siteInfo.Url));
-												siteContext.Web.EnsureProperty(w => w.Id);
-												_additionalTokens.Add(new SequenceSiteIdToken(null, c.ProvisioningId, siteContext.Web.Id));
-												siteContext.Site.EnsureProperties(s => s.Id, s => s.GroupId);
-												_additionalTokens.Add(new SequenceSiteCollectionIdToken(null, c.ProvisioningId, siteContext.Site.Id));
-												_additionalTokens.Add(new SequenceSiteGroupIdToken(null, c.ProvisioningId, siteContext.Site.GroupId));
+												try
+												{
+													AddAdditionalToken(new SequenceSiteUrlUrlToken(null, c.ProvisioningId, siteInfo.Url));
+												}
+												catch(Exception urlurlex)
+												{
+													WriteMessage($"Could not add SequenceSiteUrlUrlToken, if you are using these tokens in templates you WILL experience issues. {urlurlex.Message}", ProvisioningMessageType.Warning);
+													throw urlurlex;
+												}
+												try
+												{
+													siteContext.Web.EnsureProperty(w => w.Id);
+													AddAdditionalToken(new SequenceSiteIdToken(null, c.ProvisioningId, siteContext.Web.Id));
+												}
+												catch (Exception webIdEx)
+												{
+													WriteMessage($"Could not get WebID token, if you are using these tokens in templates you WILL experience issues. {webIdEx.Message}", ProvisioningMessageType.Warning);
+													throw webIdEx;
+												}
+												try
+												{
+													siteContext.Site.EnsureProperties(s => s.Id, s => s.GroupId);
+													AddAdditionalToken(new SequenceSiteCollectionIdToken(null, c.ProvisioningId, siteContext.Site.Id));
+													AddAdditionalToken(new SequenceSiteGroupIdToken(null, c.ProvisioningId, siteContext.Site.GroupId));
+												}
+												catch (Exception siteIdEx)
+												{
+													WriteMessage($"Could not get Site or GroupID token, if you are using these tokens in templates you WILL experience issues. {siteIdEx.Message}", ProvisioningMessageType.Warning);
+													throw siteIdEx;
+												}
 											}
 
 											siteFound = true;
 										}
 										catch (Exception ex)
 										{
-											WriteMessage($"Could not load site.  Attempt '{tries}' / '{MAX_TRIES}'. - {ex.Message}", ProvisioningMessageType.Progress);
+											WriteMessage($"Could not load site.  Attempt '{tries}' / '{MAX_TRIES}'. - {ex.Message}{Environment.NewLine}{ex.StackTrace}", ProvisioningMessageType.Warning);
+											if(ex.InnerException != null)
+											{
+												WriteMessage($"Inner {ex.InnerException.Message}", ProvisioningMessageType.Warning);
+											}
+
 											System.Threading.Thread.Sleep(5000);
 											siteContext = Sites.SiteCollection.Create(tenant.Context as ClientContext, siteInfo);
 											siteFound = false;
@@ -239,8 +284,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         _additionalTokens.Add(new SequenceSiteGroupIdToken(null, t.ProvisioningId, siteContext.Site.GroupId));
                                     }
 
-									WriteMessage("Waking up site", ProvisioningMessageType.Progress);
-									System.Threading.Thread.Sleep(5000);
+									//WriteMessage("Waking up site", ProvisioningMessageType.Progress);
+									//System.Threading.Thread.Sleep(2000);
 									break;
                                 }
                         }
@@ -290,34 +335,47 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                             using (var clonedContext = tenant.Context.Clone(siteUrl, applyingInformation.AccessTokens))
                             {
                                 var web = clonedContext.Web;
-                                foreach (var templateRef in sitecollection.Templates)
-                                {
-                                    var provisioningTemplate = hierarchy.Templates.FirstOrDefault(t => t.Id == templateRef);
-                                    if (provisioningTemplate != null)
-                                    {
-                                        provisioningTemplate.Connector = hierarchy.Connector;
-                                        //if (siteTokenParser == null)
-                                        //{
-                                        siteTokenParser = new TokenParser(web, provisioningTemplate, applyingInformation);
-                                        foreach (var token in _additionalTokens)
-                                        {
-                                            siteTokenParser.AddToken(token);
-                                        }
-										//}
-										//else
-										//{
-										//    siteTokenParser.Rebase(web, provisioningTemplate);
-										//}
-										string templateIdentifier = String.IsNullOrWhiteSpace(provisioningTemplate.DisplayName) ? provisioningTemplate.Id : provisioningTemplate.DisplayName;
-										WriteMessage($"Applying Template - {templateIdentifier}", ProvisioningMessageType.Progress);
-                                        new SiteToTemplateConversion().ApplyRemoteTemplate(web, provisioningTemplate, provisioningTemplateApplyingInformation, true, siteTokenParser);
-                                    }
-                                    else
-                                    {
-                                        WriteMessage($"Referenced template ID {templateRef} not found", ProvisioningMessageType.Error);
-                                    }
+								//
+								// SC Add: Added if around the template collection, so if there are no templates to apply, Site provisioned delegate is still invoked.
+								//
+								if (sitecollection.Templates?.Count > 0)
+								{
+									foreach (var templateRef in sitecollection.Templates)
+									{
+										var provisioningTemplate = hierarchy.Templates.FirstOrDefault(t => t.Id == templateRef);
+										if (provisioningTemplate != null)
+										{
+											provisioningTemplate.Connector = hierarchy.Connector;
+											//if (siteTokenParser == null)
+											//{
+											siteTokenParser = new TokenParser(web, provisioningTemplate, applyingInformation);
+											foreach (var token in _additionalTokens)
+											{
+												siteTokenParser.AddToken(token);
+											}
+											//}
+											//else
+											//{
+											//    siteTokenParser.Rebase(web, provisioningTemplate);
+											//}
+											string templateIdentifier = String.IsNullOrWhiteSpace(provisioningTemplate.DisplayName) ? provisioningTemplate.Id : provisioningTemplate.DisplayName;
+                                            Console.WriteLine("---");
+                                            WriteMessage($"Applying Template - {templateIdentifier}", ProvisioningMessageType.Progress);
+                                            Console.WriteLine("---");
+                                            new SiteToTemplateConversion().ApplyRemoteTemplate(web, provisioningTemplate, provisioningTemplateApplyingInformation, true, siteTokenParser);
+										}
+										else
+										{
+											WriteMessage($"Referenced template ID {templateRef} not found", ProvisioningMessageType.Error);
+										}
 
-                                }
+									}
+								}
+								else
+								{
+									web.EnsureProperties(w => w.Title, w => w.Url);
+									provisioningTemplateApplyingInformation.SiteProvisionedDelegate?.Invoke(web.Title, web.Url);
+								}
 
                                 if (siteTokenParser == null)
                                 {
@@ -418,6 +476,10 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                     {
                         tokenParser.Rebase(subweb, provisioningTemplate, provisioningTemplateApplyingInformation);
                     }
+
+					// Replace subweb with correct context - to fix an issue with client side pages.
+
+
                     new SiteToTemplateConversion().ApplyRemoteTemplate(subweb, provisioningTemplate, provisioningTemplateApplyingInformation, true, tokenParser);
                 }
                 else
