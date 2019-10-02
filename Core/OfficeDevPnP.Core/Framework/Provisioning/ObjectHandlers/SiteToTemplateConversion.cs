@@ -8,12 +8,20 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Threading.Tasks;
 using System.Web;
 
 namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 {
     internal class SiteToTemplateConversion
     {
+        private static readonly HttpClient httpClient;
+
+        static SiteToTemplateConversion()
+        {
+            httpClient = new HttpClient();
+        }
+
         /// <summary>
         /// Actual implementation of extracting configuration from existing site.
         /// </summary>
@@ -392,9 +400,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                             progressDelegate(handler.Name, step, count);
                             step++;
                         }
-                        CallWebHooks(template, tokenParser, ProvisioningTemplateWebhookKind.ObjectHandlerProvisioningStarted);
+                        CallWebHooks(template, tokenParser, ProvisioningTemplateWebhookKind.ObjectHandlerProvisioningStarted, handler);
                         tokenParser = handler.ProvisionObjects(web, template, tokenParser, provisioningInfo);
-                        CallWebHooks(template, tokenParser, ProvisioningTemplateWebhookKind.ObjectHandlerProvisioningCompleted);
+                        CallWebHooks(template, tokenParser, ProvisioningTemplateWebhookKind.ObjectHandlerProvisioningCompleted, handler);
                     }
                 }
 
@@ -417,14 +425,16 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                 {
                     foreach (var webhook in template.ProvisioningTemplateWebhooks.Where(w => w.Kind == kind))
                     {
+                        var requestParameters = new Dictionary<String, String>();
+
                         SimpleTokenParser internalParser = new SimpleTokenParser();
                         foreach (var webhookparam in webhook.Parameters)
                         {
-                            internalParser.AddToken(new WebhookParameter(parser.ParseString(webhookparam.Key), parser.ParseString(webhookparam.Value)));
+                            requestParameters.Add(webhookparam.Key, parser.ParseString(webhookparam.Value));
+                            internalParser.AddToken(new WebhookParameter(webhookparam.Key, requestParameters[webhookparam.Key]));
                         }
                         var url = parser.ParseString(webhook.Url); // parse for template scoped parameters
                         url = internalParser.ParseString(url); // parse for webhook scoped parameters
-
 
                         switch (webhook.Method)
                         {
@@ -432,20 +442,21 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                 {
                                     if (kind == ProvisioningTemplateWebhookKind.ObjectHandlerProvisioningStarted || kind == ProvisioningTemplateWebhookKind.ObjectHandlerProvisioningCompleted)
                                     {
-                                        url += $"&__handler={objectHandler.InternalName}";
+                                        url += $"&__handler={objectHandler.InternalName}"; // add the handler name to the REST request URL
+                                        url += $"&__webhookKind={kind.ToString()}"; // add the webhook kind to the REST request URL
                                     }
                                     try
                                     {
-                                        using (var client = new HttpClient())
+                                        if (webhook.Async)
                                         {
-                                            if (webhook.Async)
+                                            Task.Factory.StartNew(async () =>
                                             {
-                                                client.GetAsync(url);
-                                            }
-                                            else
-                                            {
-                                                client.GetAsync(url).GetAwaiter().GetResult();
-                                            }
+                                                await httpClient.GetAsync(url);
+                                            });
+                                        }
+                                        else
+                                        {
+                                            httpClient.GetAsync(url).GetAwaiter().GetResult();
                                         }
                                     }
                                     catch (HttpRequestException ex)
@@ -456,45 +467,46 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                 }
                             case ProvisioningTemplateWebhookMethod.POST:
                                 {
+                                    requestParameters.Add("__webhookKind", kind.ToString()); // add the webhook kind to the parameters of the request body
                                     if (kind == ProvisioningTemplateWebhookKind.ObjectHandlerProvisioningCompleted || kind == ProvisioningTemplateWebhookKind.ObjectHandlerProvisioningStarted)
                                     {
-                                        webhook.Parameters.Add("__handler", objectHandler.InternalName);
+                                        requestParameters.Add("__handler", objectHandler.InternalName); // add the handler name to the parameters of the request body
                                     }
                                     try
                                     {
-                                        using (var client = new HttpClient())
+                                        if (webhook.Async)
                                         {
-                                            if (webhook.Async)
+                                            Task.Factory.StartNew(async () =>
                                             {
                                                 switch (webhook.BodyFormat)
                                                 {
                                                     case ProvisioningTemplateWebhookBodyFormat.Json:
-                                                        client.PostAsJsonAsync(url, webhook.Parameters);
+                                                        await httpClient.PostAsJsonAsync(url, requestParameters);
                                                         break;
                                                     case ProvisioningTemplateWebhookBodyFormat.Xml:
-                                                        client.PostAsXmlAsync(url, webhook.Parameters);
+                                                        await httpClient.PostAsXmlAsync(url, requestParameters);
                                                         break;
                                                     case ProvisioningTemplateWebhookBodyFormat.FormUrlEncoded:
-                                                        var content = new FormUrlEncodedContent(webhook.Parameters);
-                                                        client.PostAsync(url, content);
+                                                        var content = new FormUrlEncodedContent(requestParameters);
+                                                        await httpClient.PostAsync(url, content);
                                                         break;
                                                 }
-                                            }
-                                            else
+                                            });
+                                        }
+                                        else
+                                        {
+                                            switch (webhook.BodyFormat)
                                             {
-                                                switch (webhook.BodyFormat)
-                                                {
-                                                    case ProvisioningTemplateWebhookBodyFormat.Json:
-                                                        client.PostAsJsonAsync(url, webhook.Parameters).GetAwaiter().GetResult();
-                                                        break;
-                                                    case ProvisioningTemplateWebhookBodyFormat.Xml:
-                                                        client.PostAsXmlAsync(url, webhook.Parameters).GetAwaiter().GetResult();
-                                                        break;
-                                                    case ProvisioningTemplateWebhookBodyFormat.FormUrlEncoded:
-                                                        var content = new FormUrlEncodedContent(webhook.Parameters);
-                                                        client.PostAsync(url, content).GetAwaiter().GetResult();
-                                                        break;
-                                                }
+                                                case ProvisioningTemplateWebhookBodyFormat.Json:
+                                                    httpClient.PostAsJsonAsync(url, requestParameters).GetAwaiter().GetResult();
+                                                    break;
+                                                case ProvisioningTemplateWebhookBodyFormat.Xml:
+                                                    httpClient.PostAsXmlAsync(url, requestParameters).GetAwaiter().GetResult();
+                                                    break;
+                                                case ProvisioningTemplateWebhookBodyFormat.FormUrlEncoded:
+                                                    var content = new FormUrlEncodedContent(requestParameters);
+                                                    httpClient.PostAsync(url, content).GetAwaiter().GetResult();
+                                                    break;
                                             }
                                         }
                                     }
