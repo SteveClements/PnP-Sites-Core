@@ -284,14 +284,16 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
 
                 if (field != null)
                 {
-                    switch (field.TypeAsString)
+					var value = parser.ParseString(valuesToSet[key]);
+
+					switch (field.TypeAsString)
                     {
                         case "User":
                         case "UserMulti":
                             {
                                 List<FieldUserValue> userValues = new List<FieldUserValue>();
 
-                                var value = parser.ParseString(valuesToSet[key]);
+                                //var value = parser.ParseString(valuesToSet[key]);
                                 if (value == null) goto default;
                                 if (value is string && string.IsNullOrWhiteSpace(value + "")) goto default;
 
@@ -335,7 +337,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                         case "TaxonomyFieldType":
                         case "TaxonomyFieldTypeMulti":
                             {
-                                var value = parser.ParseString(valuesToSet[key]);
+                                //var value = parser.ParseString(valuesToSet[key]);
 
                                 if (value != null && (value.Contains(",") || value.Contains(";")))
                                 {
@@ -413,7 +415,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                         case "Lookup":
                         case "LookupMulti":
                             {
-                                var value = parser.ParseString(valuesToSet[key]);
+                                //var value = parser.ParseString(valuesToSet[key]);
                                 if (value == null) goto default;
                                 int[] multiValue;
                                 if (value.Contains(",") || value.Contains(";"))
@@ -444,8 +446,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                             }
                         default:
                             {
-                                itemValues.Add(new FieldUpdateValue(key as string, valuesToSet[key]));
-                                break;
+								//itemValues.Add(new FieldUpdateValue(key as string, valuesToSet[key]));
+								itemValues.Add(new FieldUpdateValue(key as string, value));
+								break;
                             }
                     }
                 }
