@@ -3,6 +3,7 @@ using OfficeDevPnP.Core.ALM;
 using OfficeDevPnP.Core.Diagnostics;
 using OfficeDevPnP.Core.Framework.Provisioning.Model;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
@@ -66,10 +67,20 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                         {
                             // Get the apps already installed in the site
                             var siteApps = manager.GetAvailable()?.Where(a => a.InstalledVersion != null)?.ToList();
-							var siteAppsSiteCollection = manager.GetAvailable(Enums.AppCatalogScope.Site)?.Where(a => a.InstalledVersion != null)?.ToList();
-
 							var allAppsTenant = manager.GetAvailable().ToList();
-							var allAppsSiteCollection = manager.GetAvailable(Enums.AppCatalogScope.Site).ToList();
+
+							List<AppMetadata> siteAppsSiteCollection = new List<AppMetadata>();
+							List<AppMetadata> allAppsSiteCollection = new List<AppMetadata>();
+
+							try
+							{
+								siteAppsSiteCollection = manager.GetAvailable(Enums.AppCatalogScope.Site)?.Where(a => a.InstalledVersion != null)?.ToList();
+								allAppsSiteCollection = manager.GetAvailable(Enums.AppCatalogScope.Site).ToList();
+							}
+							catch
+							{
+								// No site collection app catatlog
+							}
 
 							Enums.AppCatalogScope GetAppScope(Guid appId)
 							{
@@ -87,8 +98,25 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 
 							foreach (var app in template.ApplicationLifecycleManagement.Apps)
                             {
-                                var appId = Guid.Parse(parser.ParseString(app.AppId));
-                                var alreadyExists = siteApps.Any(a => a.Id == appId);
+								Guid appId = Guid.Empty;
+								try
+								{
+									appId = Guid.Parse(parser.ParseString(app.AppId));
+								}
+								catch
+								{
+									//{apppackageid:FastStart Web Parts}
+									var appName = app.AppId.Substring(app.AppId.LastIndexOf(":") + 1).Replace("}", "").Trim();
+									foreach(var ta in allAppsTenant)
+									{
+										if(ta.Title.Equals(appName, StringComparison.OrdinalIgnoreCase))
+										{
+											appId = ta.Id;
+											break;
+										}
+									}
+								}
+								var alreadyExists = siteApps.Any(a => a.Id == appId);
 								if(!alreadyExists)
 								{
 									// Check site collection app catalog
