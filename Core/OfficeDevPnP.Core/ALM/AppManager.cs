@@ -11,6 +11,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OfficeDevPnP.Core.ALM
@@ -729,7 +730,7 @@ namespace OfficeDevPnP.Core.ALM
         }
 
 
-        private async Task<bool> BaseRequest(Guid id, AppManagerAction action, bool switchToAppCatalogContext, Dictionary<string, object> postObject, AppCatalogScope scope)
+        private async Task<bool> BaseRequest(Guid id, AppManagerAction action, bool switchToAppCatalogContext, Dictionary<string, object> postObject, AppCatalogScope scope, int timeoutSeconds = 200)
         {
             var context = _context;
             if (switchToAppCatalogContext == true && scope == AppCatalogScope.Tenant)
@@ -754,6 +755,8 @@ namespace OfficeDevPnP.Core.ALM
 
                 using (var httpClient = new PnPHttpProvider(handler))
                 {
+                    httpClient.Timeout = new TimeSpan(0, 0, timeoutSeconds);
+
                     var method = action.ToString();
                     var requestUrl = $"{context.Web.Url}/_api/web/{(scope == AppCatalogScope.Tenant ? "tenant" : "sitecollection")}appcatalog/AvailableApps/GetByID('{id}')/{method}";
 
@@ -832,7 +835,7 @@ namespace OfficeDevPnP.Core.ALM
                 var items = list.GetItems(query);
                 context.Load(items);
                 context.ExecuteQueryRetry();
-                
+
                 // we're not in app-only or user + app context, so let's fall back to cookie based auth
                 if (String.IsNullOrEmpty(accessToken))
                 {
@@ -945,36 +948,7 @@ namespace OfficeDevPnP.Core.ALM
                         {
                             var responseJson = JObject.Parse(responseString);
                             var id = responseJson["d"]["UniqueId"].ToString();
-
-                            var metadataRequestUrl = $"{context.Web.Url}/_api/web/{(scope == AppCatalogScope.Tenant ? "tenant" : "sitecollection")}appcatalog/AvailableApps/GetById('{id}')";
-
-                            HttpRequestMessage metadataRequest = new HttpRequestMessage(HttpMethod.Post, metadataRequestUrl);
-                            metadataRequest.Headers.Add("accept", "application/json;odata=verbose");
-                            if (!string.IsNullOrEmpty(accessToken))
-                            {
-                                metadataRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-                            }
-                            metadataRequest.Headers.Add("X-RequestDigest", requestDigest);
-
-                            // Perform actual post operation
-                            HttpResponseMessage metadataResponse = await httpClient.SendAsync(metadataRequest, new System.Threading.CancellationToken());
-
-                            if (metadataResponse.IsSuccessStatusCode)
-                            {
-                                // If value empty, URL is taken
-                                var metadataResponseString = await metadataResponse.Content.ReadAsStringAsync();
-                                if (metadataResponseString != null)
-                                {
-                                    var metadataResponseJson = JObject.Parse(metadataResponseString);
-                                    var returnedAddins = metadataResponseJson["d"];
-                                    returnValue = JsonConvert.DeserializeObject<AppMetadata>(returnedAddins.ToString());
-                                }
-                            }
-                            else
-                            {
-                                // Something went wrong...
-                                throw new Exception(await metadataResponse.Content.ReadAsStringAsync());
-                            }
+                            returnValue = await GetAppMetaData(scope, context, accessToken, httpClient, requestDigest, id);
                         }
                     }
                     else
@@ -985,6 +959,53 @@ namespace OfficeDevPnP.Core.ALM
                 }
             }
             return await Task.Run(() => returnValue);
+        }
+
+        private static async Task<AppMetadata> GetAppMetaData(AppCatalogScope scope, ClientContext context, string accessToken, PnPHttpProvider httpClient, string requestDigest, string id)
+        {
+            AppMetadata returnValue = null;
+            int retryCount = 0;
+            int waitTime = 10; // seconds
+
+            var metadataRequestUrl = $"{context.Web.Url}/_api/web/{(scope == AppCatalogScope.Tenant ? "tenant" : "sitecollection")}appcatalog/AvailableApps/GetById('{id}')";
+
+            HttpRequestMessage metadataRequest = new HttpRequestMessage(HttpMethod.Get, metadataRequestUrl);
+            metadataRequest.Headers.Add("accept", "application/json;odata=verbose");
+            if (!string.IsNullOrEmpty(accessToken))
+            {
+                metadataRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+            }
+            metadataRequest.Headers.Add("X-RequestDigest", requestDigest);
+
+            while (returnValue == null && retryCount < 5)
+            {
+                // Perform actual post operation
+                HttpResponseMessage metadataResponse = await httpClient.SendAsync(metadataRequest, new System.Threading.CancellationToken());
+
+                if (metadataResponse.IsSuccessStatusCode)
+                {
+                    // If value empty, URL is taken
+                    var metadataResponseString = await metadataResponse.Content.ReadAsStringAsync();
+                    if (metadataResponseString != null)
+                    {
+                        var metadataResponseJson = JObject.Parse(metadataResponseString);
+                        var returnedAddins = metadataResponseJson["d"];
+                        returnValue = JsonConvert.DeserializeObject<AppMetadata>(returnedAddins.ToString());
+                    }
+                }
+                else if (metadataResponse.StatusCode != HttpStatusCode.NotFound)
+                {
+                    // Something went wrong...
+                    throw new Exception(await metadataResponse.Content.ReadAsStringAsync());
+                }
+                if (returnValue == null)
+                {
+                    // try again
+                    retryCount++;
+                    Thread.Sleep(waitTime * 1000); // wait 10 seconds
+                }
+            }
+            return returnValue;
         }
         #endregion
     }

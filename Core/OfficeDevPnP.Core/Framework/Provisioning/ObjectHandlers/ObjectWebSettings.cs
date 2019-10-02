@@ -272,17 +272,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                         w => w.HasUniqueRoleAssignments);
 
                     var webSettings = template.WebSettings;
-#if !ONPREMISES
-                    if (!isNoScriptSite)
-                    {
-                        web.NoCrawl = webSettings.NoCrawl;
-                    }
-                    else
-                    {
-                        scope.LogWarning(CoreResources.Provisioning_ObjectHandlers_WebSettings_SkipNoCrawlUpdate);
-                    }
-#endif
 
+                    // Since the IsSubSite function can trigger an executequery ensure it's called before any updates to the web object are done.
                     if (!web.IsSubSite() || (web.IsSubSite() && web.HasUniqueRoleAssignments))
                     {
                         String requestAccessEmailValue = parser.ParseString(webSettings.RequestAccessEmail);
@@ -300,6 +291,15 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                     }
 
 #if !ONPREMISES
+                    if (!isNoScriptSite)
+                    {
+                        web.NoCrawl = webSettings.NoCrawl;
+                    }
+                    else
+                    {
+                        scope.LogWarning(CoreResources.Provisioning_ObjectHandlers_WebSettings_SkipNoCrawlUpdate);
+                    }
+
                     if (web.CommentsOnSitePagesDisabled != webSettings.CommentsOnSitePagesDisabled)
                     {
                         web.CommentsOnSitePagesDisabled = webSettings.CommentsOnSitePagesDisabled;
@@ -340,6 +340,12 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                     if (webSettings.SiteLogo != null)
                     {
                         var logoUrl = parser.ParseString(webSettings.SiteLogo);
+                        if (template.BaseSiteTemplate == "SITEPAGEPUBLISHING#0" && web.WebTemplate == "GROUP")
+                        {
+                            // logo provisioning throws when applying across base template IDs; provisioning fails in this case
+                            // this is the error that is already (rightly so) shown beforehand in the console: WARNING: The source site from which the template was generated had a base template ID value of SITEPAGEPUBLISHING#0, while the current target site has a base template ID value of GROUP#0. This could cause potential issues while applying the template.
+                            WriteMessage("Applying site logo across base template IDs is not possible. Skipping site logo provisioning.", ProvisioningMessageType.Warning);
+                        } else
                         // Modern site? Then we assume the SiteLogo is actually a filepath
                         if (web.WebTemplate == "GROUP")
                         {
@@ -371,7 +377,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         mimeType = "image/jpeg";
                                     }
 #endif
-                                    Sites.SiteCollection.SetGroupImage((ClientContext)web.Context, fileBytes, mimeType).GetAwaiter().GetResult();
+                                    Sites.SiteCollection.SetGroupImageAsync((ClientContext)web.Context, fileBytes, mimeType).GetAwaiter().GetResult();
 
                                 }
                             }

@@ -6,9 +6,99 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/).
 
-## [3.9.  - Unreleased ]
+## [Unreleased]
+
+### Added
+
+- Added HubSiteTitle property on Site Sequences when provisioning a Tenant Template
+- Added a ThumbnailUrl property on Client Side Pages to set the page thumbnail
+- Added additional modern web parts to our enums (CallToAction, Button, Sites)
 
 ### Changed
+
+- Extracting a template will now persist the files referred to in page thumbnails to the Files collection of the template.
+- Extracting a template will now persist the footer logo to the Files collection of the template.
+- Only load tenant CDN settings whenever there are public/private CDN settings defined in the template
+- Fix: register as hubsite will not throw an exception anymore when creating a new hubsite through a tenant template and also setting the logo for the hubsite.
+- Fix: Added retry logic to the appcatalog/AvailableApps/GetById ALM API calls to handle cases where this API is called too soon after an app has been installed in the appcatalog
+- Fix: Use UpdateOverwriteVersion instead of Update when creating a page using the client side page API, this will prevent unneeded intermediate versions showing up in the version history of the created page
+- Fix: CPU Load and Performance for ExtractClientSidePage #2395 [czullu]
+- Fix conversion of zoneEmphasis in EmphasisJsonConverter #2402 [czullu]
+
+## [3.13.1909.0 - September 2019 release]
+
+### Added
+
+- Vertical section support (read, update and create) for the modern page API
+- Add extension to create team site with no group using SPSiteManager #2364 [NicolajHedeager]
+- Improved image extraction when extracting modern pages: header image and images linked by quick links webparts are now included #2336 [heinrich-ulbricht]
+- Added support for page header images which reside outside current site collection #2360 [gautamdsheth]
+- Added support for additional teamify methods #2359 [gautamdsheth]
+- Added support for Teal theme #2376 [gautamdsheth]
+
+### Changed
+
+- Fix: Handle SPSiteManager/Create with SiteStatus = 1 (provisioning status)
+- Fix: Avoid 'object reference not found' error [kachihro]
+- Fix: Allow ZoneEmphasis in ClientSidePage to be undefined #2318 [KoenZomers]
+- Fix: Corrected AssociatedGroup Tokens documentation #2348 [pmatthews05]
+- Fix: Improve check for empty ComposedLook #2354 [heinrich-ulbricht]
+- Fix: Don't pass formatted string to logger #2368 [SchauDK]
+- Fix: Enabled custom action functionality for SharePoint 2019 that was incorrectly disabled. #2371 [jensotto]
+- Fix: use JsonConvert.ToString to handle special char in Title and Description #2372 [czullu]
+- Modified TeamNoGroup provisioning to use the new SPSiteManager API #2375 [gautamdsheth]
+- Fix: Modern page API now supports the two versions of News (older NewsreelWebPart vs newer NewsWebPart) #2389 [bogeorge]
+- Fix: Minor bugfixes for Channels and Tabs #2340 [PBLPointwork]
+- Fix: Additional null checks and content rating fix while creating team #2296 [gautamdsheth]
+
+### Deprecated
+
+- Deprecated GetGroupInfo in favor of GetGroupInfoAsync (OfficeDevPnP.Core.Sites.SiteCollection class)
+- Deprecated SetGroupImage in favor of SetGroupImageAsync (OfficeDevPnP.Core.Sites.SiteCollection class)
+
+## [3.12.1908.0 - August 2019 release]
+
+### Added
+
+### Changed
+
+- Fix: Added Built in CT Html Page layout #2321 [SchauDK]
+- Fix: Handle GroupSiteManager/CreateGroupEx with SiteStatus = 1 (provisioning status)
+- Fix: Increase default timeout for ALM API calls
+
+## [3.11.1907.0 - July 2019 release]
+
+### Added
+
+### Changed
+
+- Fixed issue when importing a CSV file using ImportTerms where terms where always added to the first termset. [IonutLupsan]
+- Fix: fileUniqueId parsing in ReplaceFileUniqueToken when point to Folder #2289 [czullu]
+- Fixed version conflict in clientsidepage handler #2255, #2285
+- Fix: Made owner mandatory for communication site in app-only context #2297 [gautamdsheth]
+- Fix: Support for default header image for client side page based on visual layout #2301 [SchauDK]
+- Fix: Ensure ID property is loaded for sitegroup provisioning #2303 [OliverZeiser]
+- Fix: "The 'Equals' member cannot be used in the expression" in GetPrincipalUniqueRoleAssignments #2305 [patrikhellgren]
+- Fix: Added BaseViewID into ViewCreationInformation #2304 [StaffanNelemans]
+- CAML query class improvements #2308 [kirschem]
+- Fix tokenization issue with views in root site collection #2295 [jackpoz]
+- Fix: NoCrawl web property setting did not always work
+
+## [3.10.1906.0 - June 2019 release ]
+
+### Added
+
+- Added ability to include all client side pages in an extracted template
+- Feature: Adds capability to connect existing team site to MS Teams team (teamify) #2265 [gautamdsheth]
+
+### Changed 
+
+- Client side page serialization fix: if web part serverProcessedContent properties contains htmlStrings then these are now correctly serialized in the resulting html
+- Update SiteLockState enum to support ReadOnly status #2275 [TomekPi]
+- Fix DataRow parameters replacement. #2248 [siata13]
+- The specified user {associatedownergroupid} could not be found. #2281 [StaffanNelemans]
+- Fix DataRow URL field name: data value URL,Description. #2273 [cgenero]
+- Provisioning webhook fixes
 
 ## [3.9.1905.3 - May 2019 Intermediate Release 3]
 

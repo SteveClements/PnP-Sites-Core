@@ -310,7 +310,7 @@ namespace Microsoft.SharePoint.Client
                 if (contextSettings != null) // We do have more information about this client context, so let's use it to do a more intelligent clone
                 {
                     string newSiteUrl = siteUrl.ToString();
-                    
+
                     // A diffent host = different audience ==> new access token is needed
                     if (contextSettings.UsesDifferentAudience(newSiteUrl))
                     {
@@ -320,7 +320,7 @@ namespace Microsoft.SharePoint.Client
                         ClientContext newClientContext = null;
                         if (contextSettings.Type == ClientContextType.SharePointACSAppOnly)
                         {
-                            newClientContext = authManager.GetAppOnlyAuthenticatedContext(newSiteUrl, TokenHelper.GetRealmFromTargetUrl(new Uri(newSiteUrl)), contextSettings.ClientId, contextSettings.ClientSecret, contextSettings.AcsHostUrl, contextSettings.GlobalEndPointPrefix);                            
+                            newClientContext = authManager.GetAppOnlyAuthenticatedContext(newSiteUrl, TokenHelper.GetRealmFromTargetUrl(new Uri(newSiteUrl)), contextSettings.ClientId, contextSettings.ClientSecret, contextSettings.AcsHostUrl, contextSettings.GlobalEndPointPrefix);
                         }
 #if !ONPREMISES && !NETSTANDARD2_0
                         else if (contextSettings.Type == ClientContextType.AzureADCredentials)
@@ -363,7 +363,7 @@ namespace Microsoft.SharePoint.Client
                             methodInfo.Invoke(clientContext, parametersArray);
                         };
                     }
-                }                
+                }
                 else // Fallback the default cloning logic if there were not context settings available
                 {
                     //Take over the form digest handling setting
@@ -768,6 +768,19 @@ namespace Microsoft.SharePoint.Client
         }
 
         /// <summary>
+        /// BETA: Creates a Team Site Collection with no group
+        /// </summary>
+        /// <param name="clientContext"></param>
+        /// <param name="siteCollectionCreationInformation"></param>
+        /// <returns></returns>
+        public static async Task<ClientContext> CreateSiteAsync(this ClientContext clientContext, TeamNoGroupSiteCollectionCreationInformation siteCollectionCreationInformation)
+        {
+            await new SynchronizationContextRemover();
+
+            return await SiteCollection.CreateAsync(clientContext, siteCollectionCreationInformation);
+        }
+
+        /// <summary>
         /// BETA: Creates a Team Site Collection
         /// </summary>
         /// <param name="clientContext"></param>
@@ -804,6 +817,42 @@ namespace Microsoft.SharePoint.Client
             await new SynchronizationContextRemover();
 
             return await SiteCollection.AliasExistsAsync(clientContext, alias);
+        }
+
+        /// <summary>
+        /// Enable MS Teams team on a group connected team site
+        /// </summary>
+        /// <param name="clientContext"></param>
+        /// <returns></returns>
+        public static async Task<string> TeamifyAsync(this ClientContext clientContext)
+        {
+            await new SynchronizationContextRemover();
+
+            return await SiteCollection.TeamifySiteAsync(clientContext);
+        }
+
+        /// <summary>
+        /// Checks whether the teamify prompt is hidden in O365 Group connected sites
+        /// </summary>
+        /// <param name="clientContext">ClientContext of the site to operate against</param>
+        /// <returns></returns>
+        public static async Task<bool> IsTeamifyPromptHidden(this ClientContext clientContext)
+        {
+            await new SynchronizationContextRemover();
+
+            return await SiteCollection.IsTeamifyPromptHiddenAsync(clientContext);
+        }
+
+        /// <summary>
+        /// Hide the teamify prompt displayed in O365 group connected sites
+        /// </summary>
+        /// <param name="clientContext">ClientContext of the site to operate against</param>
+        /// <returns></returns>
+        public static async Task<bool> HideTeamifyPrompt(this ClientContext clientContext)
+        {
+            await new SynchronizationContextRemover();
+
+            return await SiteCollection.HideTeamifyPromptAsync(clientContext);
         }
 #endif
     }

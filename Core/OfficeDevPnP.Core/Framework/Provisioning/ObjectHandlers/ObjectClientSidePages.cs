@@ -233,6 +233,11 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                         page.LayoutType = (Pages.ClientSidePageLayoutType)Enum.Parse(typeof(Pages.ClientSidePageLayoutType), clientSidePage.Layout);
                     }
 
+                    if (!string.IsNullOrEmpty(clientSidePage.ThumbnailUrl))
+                    {
+                        page.ThumbnailUrl = parser.ParseString(clientSidePage.ThumbnailUrl);
+                    }
+
                     // Add content on the page, not needed for repost pages
                     if (page.LayoutType != Pages.ClientSidePageLayoutType.RepostPage)
                     {
@@ -269,6 +274,21 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                     break;
                                 case CanvasSectionType.TwoColumnRight:
                                     page.AddSection(Pages.CanvasSectionTemplate.TwoColumnRight, section.Order, (Int32)section.BackgroundEmphasis);
+                                    break;
+                                case CanvasSectionType.OneColumnVerticalSection:
+                                    page.AddSection(Pages.CanvasSectionTemplate.OneColumnVerticalSection, section.Order, (Int32)section.BackgroundEmphasis, (Int32)section.VerticalSectionEmphasis);
+                                    break;
+                                case CanvasSectionType.TwoColumnVerticalSection:
+                                    page.AddSection(Pages.CanvasSectionTemplate.TwoColumnVerticalSection, section.Order, (Int32)section.BackgroundEmphasis, (Int32)section.VerticalSectionEmphasis);
+                                    break;
+                                case CanvasSectionType.TwoColumnLeftVerticalSection:
+                                    page.AddSection(Pages.CanvasSectionTemplate.TwoColumnLeftVerticalSection, section.Order, (Int32)section.BackgroundEmphasis, (Int32)section.VerticalSectionEmphasis);
+                                    break;
+                                case CanvasSectionType.TwoColumnRightVerticalSection:
+                                    page.AddSection(Pages.CanvasSectionTemplate.TwoColumnRightVerticalSection, section.Order, (Int32)section.BackgroundEmphasis, (Int32)section.VerticalSectionEmphasis);
+                                    break;
+                                case CanvasSectionType.ThreeColumnVerticalSection:
+                                    page.AddSection(Pages.CanvasSectionTemplate.ThreeColumnVerticalSection, section.Order, (Int32)section.BackgroundEmphasis, (Int32)section.VerticalSectionEmphasis);
                                     break;
                                 default:
                                     page.AddSection(Pages.CanvasSectionTemplate.OneColumn, section.Order, (Int32)section.BackgroundEmphasis);
@@ -352,6 +372,12 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                                 case WebPartType.BingMap:
                                                     webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.BingMap);
                                                     break;
+                                                case WebPartType.Button:
+                                                    webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.Button);
+                                                    break;
+                                                case WebPartType.CallToAction:
+                                                    webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.CallToAction);
+                                                    break;
                                                 case WebPartType.ContentEmbed:
                                                     webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.ContentEmbed);
                                                     break;
@@ -379,6 +405,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                                 case WebPartType.List:
                                                     webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.List);
                                                     break;
+                                                case WebPartType.News:
+                                                    webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.News);
+                                                    break;
                                                 case WebPartType.NewsFeed:
                                                     webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.NewsFeed);
                                                     break;
@@ -402,6 +431,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                                     break;
                                                 case WebPartType.SiteActivity:
                                                     webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.SiteActivity);
+                                                    break;
+                                                case WebPartType.Sites:
+                                                    webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.Sites);
                                                     break;
                                                 case WebPartType.VideoEmbed:
                                                     webPartName = Pages.ClientSidePage.ClientSideWebPartEnumToName(Pages.DefaultClientSideWebParts.VideoEmbed);
@@ -518,9 +550,30 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                     if (!string.IsNullOrEmpty(clientSidePage.ContentTypeID))
                     {
                         page.PageListItem[ContentTypeIdField] = clientSidePage.ContentTypeID;
-                        page.PageListItem.Update();
+                        page.PageListItem.UpdateOverwriteVersion();
+                        //page.PageListItem.Update();
                         web.Context.Load(page.PageListItem);
                         isDirty = true;
+                    }
+
+                    if (clientSidePage.PromoteAsTemplate && page.LayoutType == Pages.ClientSidePageLayoutType.Article)
+                    {
+                        // Choice field, currently there's only one value possible and that's Template
+                        page.PageListItem[SPSitePageFlagsField] = ";#Template;#";
+                        page.PageListItem.UpdateOverwriteVersion();
+                        //page.PageListItem.Update();
+                        web.Context.Load(page.PageListItem);
+                        isDirty = true;
+                    }
+
+                    if (isDirty)
+                    {
+                        web.Context.ExecuteQueryRetry();
+                    }
+
+                    if (clientSidePage.FieldValues != null && clientSidePage.FieldValues.Any())
+                    {
+                        ListItemUtilities.UpdateListItem(page.PageListItem, parser, clientSidePage.FieldValues, ListItemUtilities.ListItemUpdateType.UpdateOverwriteVersion);
                     }
 
                     // Set page property bag values
@@ -539,26 +592,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                         }
 
                         pageFile.Update();
-                        isDirty = true;
-                    }
-
-                    if (clientSidePage.PromoteAsTemplate && page.LayoutType == Pages.ClientSidePageLayoutType.Article)
-                    {
-                        // Choice field, currently there's only one value possible and that's Template
-                        page.PageListItem[SPSitePageFlagsField] = ";#Template;#";
-                        page.PageListItem.Update();
                         web.Context.Load(page.PageListItem);
-                        isDirty = true;
-                    }
-
-                    if (isDirty)
-                    {
                         web.Context.ExecuteQueryRetry();
-                    }
-
-                    if (clientSidePage.FieldValues != null && clientSidePage.FieldValues.Any())
-                    {
-                        ListItemUtilities.UpdateListItem(page.PageListItem, parser, clientSidePage.FieldValues, ListItemUtilities.ListItemUpdateType.UpdateOverwriteVersion);
                     }
 
                     if (page.LayoutType != Pages.ClientSidePageLayoutType.SingleWebPartAppPage)

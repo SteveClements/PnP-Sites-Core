@@ -466,17 +466,19 @@ namespace OfficeDevPnP.Core.Pages
         {
             try
             {
-                this.clientContext.Site.EnsureProperties(p => p.Id);
-                this.clientContext.Web.EnsureProperties(p => p.Id);
+                this.siteId = this.clientContext.Site.EnsureProperty(p => p.Id);
+                this.webId = this.clientContext.Web.EnsureProperty(p => p.Id);
 
-                var pageHeaderImage = this.clientContext.Web.GetFileByServerRelativePath(ResourcePath.FromDecodedUrl(ImageServerRelativeUrl));
-                this.clientContext.Load(pageHeaderImage, p => p.UniqueId, p => p.ListId);
-                this.clientContext.ExecuteQueryRetry();
+                if (!ImageServerRelativeUrl.StartsWith("/_LAYOUTS", StringComparison.OrdinalIgnoreCase))
+                {
+                    var pageHeaderImage = this.clientContext.Web.GetFileByServerRelativePath(ResourcePath.FromDecodedUrl(ImageServerRelativeUrl));
+                    this.clientContext.Load(pageHeaderImage, p => p.UniqueId, p => p.ListId);
+                    this.clientContext.ExecuteQueryRetry();
 
-                this.siteId = this.clientContext.Site.Id;
-                this.webId = this.clientContext.Web.Id;
-                this.listId = pageHeaderImage.ListId;
-                this.uniqueId = pageHeaderImage.UniqueId;
+                    this.listId = pageHeaderImage.ListId;
+                    this.uniqueId = pageHeaderImage.UniqueId;
+                }
+
                 this.headerImageResolved = true;
             }
             catch (ServerException ex)
@@ -488,12 +490,16 @@ namespace OfficeDevPnP.Core.Pages
                 }
                 else if (ex.Message.Contains("SPWeb.ServerRelativeUrl"))
                 {
-                    // image has to live in the web for which we've set up the client context...if not skip and log a warning
+                    // image resides in a different site collection context, we will simply allow it to be referred in the page header section.                    
                     Log.Warning(Constants.LOGGING_SOURCE, CoreResources.ClientSidePageHeader_ImageInDifferentWeb, imageServerRelativeUrl);
+                    this.headerImageResolved = true;
                 }
                 else
                 {
-                    throw;
+                    // the image can also refer to a path outside SharePoint, that is also allowed, so we will mark it as resolved and move ahead.
+                    Log.Warning(Constants.LOGGING_SOURCE, CoreResources.ClientSidePageHeader_ImageInDifferentWeb, imageServerRelativeUrl);
+                    this.headerImageResolved = true;
+                    //throw;
                 }
             }
         }

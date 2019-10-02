@@ -65,7 +65,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                     }
                 case FieldType.URL:
                     // FieldUrlValue - Expected format: URL,Description
-                    var urlArray = fieldValue.Split(',');
+                    var urlArray = fieldValue.Split(new Char[] { ',' }, 2);
                     var linkValue = new FieldUrlValue();
                     if (urlArray.Length == 2)
                     {
@@ -261,7 +261,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
             UpdateOverwriteVersion
         }
 
-        public static void UpdateListItem(ListItem item, TokenParser parser, IDictionary<string, string> valuesToSet, ListItemUpdateType updateType)
+        public static void UpdateListItem(ListItem item, TokenParser parser, IDictionary<string, string> valuesToSet, ListItemUpdateType updateType, bool SkipExecuteQuery=false)
         {
             var itemValues = new List<FieldUpdateValue>();
 
@@ -284,19 +284,17 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
 
                 if (field != null)
                 {
-					var value = parser.ParseString(valuesToSet[key]);
+                    var value = parser.ParseString(valuesToSet[key]);
 
-					switch (field.TypeAsString)
+                    switch (field.TypeAsString)
                     {
                         case "User":
                         case "UserMulti":
                             {
                                 List<FieldUserValue> userValues = new List<FieldUserValue>();
 
-                                //var value = parser.ParseString(valuesToSet[key]);
                                 if (value == null) goto default;
                                 if (value is string && string.IsNullOrWhiteSpace(value + "")) goto default;
-
 
                                 if (value.Contains(","))
                                 {
@@ -337,8 +335,6 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                         case "TaxonomyFieldType":
                         case "TaxonomyFieldTypeMulti":
                             {
-                                //var value = parser.ParseString(valuesToSet[key]);
-
                                 if (value != null && (value.Contains(",") || value.Contains(";")))
                                 {
                                     var taxSession = clonedContext.Site.GetTaxonomySession();
@@ -415,7 +411,6 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                         case "Lookup":
                         case "LookupMulti":
                             {
-                                //var value = parser.ParseString(valuesToSet[key]);
                                 if (value == null) goto default;
                                 int[] multiValue;
                                 if (value.Contains(",") || value.Contains(";"))
@@ -446,9 +441,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                             }
                         default:
                             {
-								//itemValues.Add(new FieldUpdateValue(key as string, valuesToSet[key]));
-								itemValues.Add(new FieldUpdateValue(key as string, value));
-								break;
+                                itemValues.Add(new FieldUpdateValue(key as string, value));
+                                break;
                             }
                     }
                 }
@@ -527,7 +521,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
 #else
             item.Update();
 #endif
-            context.ExecuteQueryRetry();
+            if(!SkipExecuteQuery)
+                context.ExecuteQueryRetry();
         }
 
         [Obsolete("Use UpdateListItem(ListItem item, TokenParser parser, IDictionary<string, string> valuesToSet, ListItemUpdateType updateType) instead")]
