@@ -213,7 +213,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         page.SetCustomPageHeader(serverRelativeImageUrl);
                                     }
 
-                                    page.PageHeader.TextAlignment = (Pages.ClientSidePageHeaderTitleAlignment)Enum.Parse(typeof(ClientSidePageHeaderTextAlignment), clientSidePage.Header.TextAlignment.ToString());
+                                    //page.PageHeader.TextAlignment = (Pages.ClientSidePageHeaderTitleAlignment)Enum.Parse(typeof(ClientSidePageHeaderTextAlignment), clientSidePage.Header.TextAlignment.ToString());
+                                    page.PageHeader.TextAlignment = (Pages.ClientSidePageHeaderTitleAlignment)Enum.Parse(typeof(Pages.ClientSidePageHeaderTitleAlignment), clientSidePage.Header.TextAlignment.ToString());
                                     page.PageHeader.LayoutType = (Pages.ClientSidePageHeaderLayoutType)Enum.Parse(typeof(ClientSidePageHeaderLayoutType), clientSidePage.Header.LayoutType.ToString());
                                     page.PageHeader.ShowTopicHeader = clientSidePage.Header.ShowTopicHeader;
                                     page.PageHeader.ShowPublishDate = clientSidePage.Header.ShowPublishDate;
