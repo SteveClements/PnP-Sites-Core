@@ -195,7 +195,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                 System.Threading.Thread.Sleep(5000); // sleep 5 seconds and try again
                 appMetadata = manager.GetAvailable(appId, scope);
             }
-            if(appMetadata.AppCatalogVersion != appMetadata.InstalledVersion)
+            if (appMetadata.AppCatalogVersion != appMetadata.InstalledVersion)
             {
                 // We ran into a timeout
                 throw new Exception("App Install timeout hit, could not determine installed state");
@@ -213,7 +213,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                 System.Threading.Thread.Sleep(5000); // sleep 5 seconds and try again
                 appMetadata = manager.GetAvailable(appId, Enums.AppCatalogScope.Tenant);
             }
-            if(appMetadata.InstalledVersion != null)
+            if (appMetadata.InstalledVersion != null)
             {
                 throw new Exception("App Uninstall timeout hit, could not determine uninstalled state.");
             }
@@ -228,9 +228,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
         {
             if (!_willProvision.HasValue && template.ApplicationLifecycleManagement != null)
             {
-                _willProvision = (template.ApplicationLifecycleManagement.AppCatalog != null ||
-                                  template.ApplicationLifecycleManagement.Apps.Count > 0
-                                 );
+                _willProvision = (template.ApplicationLifecycleManagement.AppCatalog?.Packages != null && 
+                                template.ApplicationLifecycleManagement.AppCatalog?.Packages.Count > 0) ||
+                                template.ApplicationLifecycleManagement.Apps.Count > 0;
             }
 			//return (!web.IsSubSite() && _willProvision.Value);
 			return (_willProvision.Value);

@@ -26,7 +26,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 #if DEBUG
             get { return $"Content Types ({_step})"; }
 #else
-            get { return $"Content Types"; }
+			get { return $"Content Types"; }
 #endif
         }
 
@@ -65,7 +65,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                     foreach (var ct in template.ContentTypes.OrderBy(ct => ct.Id)) // ordering to handle references to parent content types that can be in the same template
                     {
                         currentCtIndex++;
-                        WriteMessage($"Content Type|{ct.Name}|{currentCtIndex}|{template.ContentTypes.Count}", ProvisioningMessageType.Progress);
+
+                        WriteSubProgress("Content Type", ct.Name, currentCtIndex, template.ContentTypes.Count);
                         var existingCT = existingCTs.FirstOrDefault(c => c.StringId.Equals(ct.Id, StringComparison.OrdinalIgnoreCase));
                         if (existingCT == null)
                         {
@@ -74,6 +75,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                             if (newCT != null)
                             {
                                 existingCTs.Add(newCT);
+                                existingCT = newCT;
                             }
                         }
                         else
@@ -88,21 +90,32 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                 if (newCT != null)
                                 {
                                     existingCTs.Add(newCT);
+                                    existingCT = newCT;
                                 }
                             }
                             else
                             {
-                                // We can't update a sealed content type unless we change sealed to false
-                                if (!existingCT.Sealed || !ct.Sealed)
+                                // We can't update a sealed or read only content type unless we change the value to false
+                                if ((!existingCT.Sealed || !ct.Sealed) && (!existingCT.ReadOnly || !ct.ReadOnly))
                                 {
                                     scope.LogDebug(CoreResources.Provisioning_ObjectHandlers_ContentTypes_Updating_existing_Content_Type___0_____1_, ct.Id, ct.Name);
                                     UpdateContentType(web, template, existingCT, ct, parser, scope);
                                 }
                                 else
                                 {
-                                    scope.LogWarning(CoreResources.Provisioning_ObjectHandlers_ContentTypes_Updating_existing_Content_Type_Sealed, ct.Id, ct.Name);
+                                    scope.LogWarning(CoreResources.Provisioning_ObjectHandlers_ContentTypes_Updating_existing_Content_Type_SealedOrReadOnly, ct.Id, ct.Name);
                                 }
                             }
+                        }
+
+                        // Set ReadOnly as the last thing because a ReadOnly content type cannot be updated
+                        if (this._step == FieldAndListProvisioningStepHelper.Step.LookupFields && existingCT.ReadOnly == false && ct.ReadOnly == true)
+                        {
+                            scope.LogPropertyUpdate("ReadOnly");
+                            existingCT.ReadOnly = ct.ReadOnly;
+
+                            existingCT.Update(false);
+                            existingCT.Context.ExecuteQueryRetry();
                         }
                     }
                 }
@@ -124,14 +137,15 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
             var isDirty = false;
             var reOrderFields = false;
 
-			
             if (existingContentType.Hidden != templateContentType.Hidden)
             {
                 scope.LogPropertyUpdate("Hidden");
                 existingContentType.Hidden = templateContentType.Hidden;
                 isDirty = true;
             }
-            if (existingContentType.ReadOnly != templateContentType.ReadOnly)
+            // Only change ReadOnly here, if change is from True => False (not ReadOnly)
+            // If change is ReadOnly = True, it will be set later
+            if (existingContentType.ReadOnly == true && templateContentType.ReadOnly == false)
             {
                 scope.LogPropertyUpdate("ReadOnly");
                 existingContentType.ReadOnly = templateContentType.ReadOnly;
@@ -216,15 +230,15 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                 isDirty = true;
             }
 #endif
-			if (isDirty)
-			{
-				// Default to false as there is no reason to update children on CT property changes.
-				existingContentType.Update(false);
-				web.Context.ExecuteQueryRetry();
-			}
+            if (isDirty)
+            {
+                // Default to false as there is no reason to update children on CT property changes.
+                existingContentType.Update(false);
+                web.Context.ExecuteQueryRetry();
+            }
 
-			// Set flag to reorder fields CT fields are not equal to template fields
-			var existingFieldNames = existingContentType.FieldLinks.AsEnumerable().Select(fld => fld.Name).ToArray();
+            // Set flag to reorder fields CT fields are not equal to template fields
+            var existingFieldNames = existingContentType.FieldLinks.AsEnumerable().Select(fld => fld.Name).ToArray();
             var ctFieldNames = templateContentType.FieldRefs.Select(fld => parser.ParseString(fld.Name)).ToArray();
             reOrderFields = ctFieldNames.Length > 0 && !existingFieldNames.SequenceEqual(ctFieldNames);
 
@@ -235,16 +249,21 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 
             var fieldsNotPresentInTarget = sourceIds.Except(targetIds).ToArray();
 
-			// Should child content types be updated.
-			bool UpdateChildren()
-			{
-				return templateContentType.FieldRefs.Any(f => f.UpdateChildren == true);
-			}
-			
-			if (fieldsNotPresentInTarget.Any())
+            // Should child content types be updated.
+            bool UpdateChildren()
+            {
+                if (fieldsNotPresentInTarget.Any())
+                {
+                    return !templateContentType.FieldRefs.All(f => f.UpdateChildren == false);
+                }
+
+                return true;
+            }
+
+            if (fieldsNotPresentInTarget.Any())
             {
                 // Set flag to reorder fields when new fields are added.
-                //reOrderFields = true;
+                reOrderFields = true;
 
                 foreach (var fieldId in fieldsNotPresentInTarget)
                 {
@@ -322,9 +341,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
 
             if (isDirty)
             {
-				var updateChildren = UpdateChildren();
-				scope.LogInfo("Update Child Content Types: '{0}'", updateChildren);
-				existingContentType.Update(updateChildren);
+                scope.LogDebug("Update child Content Types: {0}", UpdateChildren());
+                existingContentType.Update(UpdateChildren());
                 web.Context.ExecuteQueryRetry();
             }
         }
@@ -401,10 +419,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
             {
                 createdCT.FieldLinks.Reorder(ctFields);
             }
-            if (createdCT.ReadOnly != templateContentType.ReadOnly)
-            {
-                createdCT.ReadOnly = templateContentType.ReadOnly;
-            }
+            // Set Hidden and Sealed property, ReadOnly will be set later
             if (createdCT.Hidden != templateContentType.Hidden)
             {
                 createdCT.Hidden = templateContentType.Hidden;
@@ -417,9 +432,50 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
             if (templateContentType.DocumentSetTemplate == null)
             {
                 // Only apply a document template when the contenttype is not a document set
-                if (!string.IsNullOrEmpty(parser.ParseString(templateContentType.DocumentTemplate)))
+                //Skipping updates of DocumentTemplate as we can't upload files to /_cts/ContentTypeName/FileName to noscript sites
+                if (!isNoScriptSite)
                 {
-                    createdCT.DocumentTemplate = parser.ParseString(templateContentType.DocumentTemplate);
+                    // Only apply a document template when the contenttype is not a document set
+                    if (!string.IsNullOrEmpty(parser.ParseString(templateContentType.DocumentTemplate)))
+                    {
+                        string documentTemplate = parser.ParseString(templateContentType.DocumentTemplate);
+                        web.EnsureProperties(w => w.ServerRelativeUrl, w => w.Url);
+                        try
+                        {
+                            using (var fsstream = template.Connector.GetFileStream($"_cts/{name}/{documentTemplate}"))
+                            {
+                                if (fsstream != null)
+                                {
+                                    Microsoft.SharePoint.Client.Folder ctFolder = web.GetFolderByServerRelativeUrl($"{web.ServerRelativeUrl}/_cts/{name}");
+                                    web.Context.Load(ctFolder, fl => fl.Files.Include(f => f.Name, f => f.ServerRelativeUrl));
+                                    web.Context.ExecuteQuery();
+
+                                    FileCreationInformation newFile = new FileCreationInformation();
+                                    newFile.ContentStream = fsstream;
+                                    newFile.Url = $"{web.ServerRelativeUrl}/_cts/{name}/{documentTemplate}";
+
+                                    Microsoft.SharePoint.Client.File uploadedFile = ctFolder.Files.Add(newFile);
+                                    web.Context.Load(uploadedFile);
+                                    web.Context.ExecuteQuery();
+                                }
+                            }
+                            createdCT.DocumentTemplate = documentTemplate;
+                        }
+                        catch (Exception ex)
+                        {
+                            scope.LogError(ex, CoreResources.Provisioning_ObjectHandlers_ContentTypes_ErrorDocumentTemplate, name, documentTemplate);
+                        }
+                    }
+                }
+                else
+                {
+                    var parsedDocumentTemplate = parser.ParseString(templateContentType.DocumentTemplate);
+                    if (!string.IsNullOrEmpty(parsedDocumentTemplate))
+                    {
+                        createdCT.DocumentTemplate = parsedDocumentTemplate;
+                        // log message that's we are skipping uploads
+                        scope.LogWarning(CoreResources.Provisioning_ObjectHandlers_ContentTypes_SkipDocumentTemplate, name);
+                    }
                 }
             }
 
@@ -592,12 +648,14 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
             {
                 WriteMessage("We discovered content types in this subweb. While technically possible, we recommend moving these content types to the root site collection. Consider excluding them from this template.", ProvisioningMessageType.Warning);
             }
+            web.EnsureProperties(w => w.Url, w => w.ServerRelativeUrl);//neded for DocumentTemplate extraction
+
             List<ContentType> ctsToReturn = new List<ContentType>();
             var currentCtIndex = 0;
             foreach (var ct in cts)
             {
                 currentCtIndex++;
-                WriteMessage($"Content Type|{ct.Name}|{currentCtIndex}|{cts.Count()}", ProvisioningMessageType.Progress);
+                WriteSubProgress("Content Type", ct.Name, currentCtIndex, cts.Count);
 
                 if (!BuiltInContentTypeId.Contains(ct.StringId) &&
                     (creationInfo.ContentTypeGroupsToInclude.Count == 0 || creationInfo.ContentTypeGroupsToInclude.Contains(ct.Group)))
@@ -616,6 +674,34 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                         if (!ct.DocumentTemplate.StartsWith("_cts/"))
                         {
                             ctDocumentTemplate = ct.DocumentTemplate;
+                        }
+                        //extract DocumentTemplate if it points to ContentType Ressource Folder
+                        if (creationInfo.ExtractConfiguration != null && creationInfo.ExtractConfiguration.PersistAssetFiles && !string.IsNullOrWhiteSpace(ct.DocumentTemplateUrl) && ct.DocumentTemplateUrl.Contains("_cts/"))
+                        {
+                            try
+                            {
+                                var spFile = web.GetFileByServerRelativeUrl(ct.DocumentTemplateUrl);
+                                spFile.EnsureProperties(f => f.Level, f => f.ServerRelativeUrl, f => f.Name);
+
+                                // If we got here it's a file, let's grab the file's path and name
+                                var baseUri = new Uri(web.Url);
+                                var fullUri = new Uri(baseUri, spFile.ServerRelativeUrl);
+                                var folderPath = System.Web.HttpUtility.UrlDecode(fullUri.Segments.Take(fullUri.Segments.Count() - 1).ToArray().Aggregate((i, x) => i + x).TrimEnd('/'));
+                                var fileName = System.Web.HttpUtility.UrlDecode(fullUri.Segments[fullUri.Segments.Count() - 1]);
+
+                                var templateFolderPath = folderPath.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray());
+
+                                web.Context.Load(spFile);
+                                web.Context.ExecuteQueryRetry();
+                                var spFileStream = spFile.OpenBinaryStream();
+                                web.Context.ExecuteQueryRetry();
+
+                                template.Connector.SaveFileStream(spFile.Name, templateFolderPath, spFileStream.Value);
+                            }
+                            catch (Exception ex)
+                            {
+                                scope.LogError(ex, CoreResources.Provisioning_ObjectHandlers_ContentTypes_ErrorSaveDocumentTemplateToConnector, ct.Name, ct.DocumentTemplateUrl);
+                            }
                         }
                     }
 
@@ -697,13 +783,48 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                              {
                                  ContentTypeId = defaultDocument.ContentTypeId.StringValue,
                                  Name = defaultDocument.Name,
-                                 FileSourcePath = String.Empty, // TODO: How can we extract the proper file?!
+#if SP2013 || SP2016
+								 FileSourcePath = string.Empty
+#else
+                                 FileSourcePath = creationInfo.PersistBrandingFiles ? $"_cts/{ct.Name}/{defaultDocument.DocumentPath.DecodedUrl}" : string.Empty
+#endif
                              }).ToList(),
                             (from sharedField in documentSetTemplate.SharedFields.AsEnumerable()
                              select sharedField.Id).ToList(),
                             (from welcomePageField in documentSetTemplate.WelcomePageFields.AsEnumerable()
                              select welcomePageField.Id).ToList()
                         );
+
+                        //extract the DefaultDocument files
+                        foreach (var defaultDoc in newCT.DocumentSetTemplate.DefaultDocuments.Where(dd => !string.IsNullOrWhiteSpace(dd.FileSourcePath)))
+                        {
+                            try
+                            {
+                                string serverRelativeUrl = $"{web.ServerRelativeUrl}/{defaultDoc.FileSourcePath}";
+                                var spFile = web.GetFileByServerRelativeUrl(serverRelativeUrl);
+
+                                spFile.EnsureProperties(f => f.Level, f => f.ServerRelativeUrl, f => f.Name);
+
+                                // If we got here it's a file, let's grab the file's path and name
+                                var baseUri = new Uri(web.Url);
+                                var fullUri = new Uri(baseUri, spFile.ServerRelativeUrl);
+                                var folderPath = System.Web.HttpUtility.UrlDecode(fullUri.Segments.Take(fullUri.Segments.Count() - 1).ToArray().Aggregate((i, x) => i + x).TrimEnd('/'));
+                                var fileName = System.Web.HttpUtility.UrlDecode(fullUri.Segments[fullUri.Segments.Count() - 1]);
+
+                                var templateFolderPath = folderPath.Substring(web.ServerRelativeUrl.Length).TrimStart("/".ToCharArray());
+
+                                web.Context.Load(spFile);
+                                web.Context.ExecuteQueryRetry();
+                                var spFileStream = spFile.OpenBinaryStream();
+                                web.Context.ExecuteQueryRetry();
+
+                                template.Connector.SaveFileStream(spFile.Name, templateFolderPath, spFileStream.Value);
+                            }
+                            catch (Exception ex)
+                            {
+                                scope.LogError(ex, CoreResources.Provisioning_ObjectHandlers_ContentTypes_ErrorExtractDocumentSetTemplate, defaultDoc.FileSourcePath);
+                            }
+                        }
                     }
 
                     ctsToReturn.Add(newCT);

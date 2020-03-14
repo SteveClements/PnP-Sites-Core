@@ -189,7 +189,7 @@ namespace OfficeDevPnP.Core
                     }
                 case AzureEnvironment.USGovernment:
                     {
-                        return "accesscontrol.windows.net";
+                        return "microsoftonline.us";
                     }
                 case AzureEnvironment.PPE:
                     {
@@ -225,7 +225,7 @@ namespace OfficeDevPnP.Core
                     }
                 case AzureEnvironment.USGovernment:
                     {
-                        return "accounts";
+                        return "login";
                     }
                 case AzureEnvironment.PPE:
                     {
@@ -520,6 +520,105 @@ namespace OfficeDevPnP.Core
 
             return clientContext;
         }
+
+        /// <summary>
+        /// Returns a SharePoint ClientContext using High Trust Certificate App Only Authentication
+        /// </summary>
+        /// <param name="siteUrl">Site for which the ClientContext object will be instantiated</param>
+        /// <param name="clientId">The SharePoint Client ID</param>
+        /// <param name="certificatePath">Full path to the private key certificate (.pfx) used to authenticate</param>
+        /// <param name="certificatePassword">Password used for the private key certificate (.pfx)</param>
+        /// <param name="certificateIssuerId">The IssuerID under which the CER counterpart of the PFX has been registered in SharePoint as a Trusted Security Token issuer</param>
+        /// <param name="loginName">
+        /// Name of the user (login name) on whose behalf to create the access token.
+        /// Supported input formats are SID and User Principal Name (UPN).
+        /// If the parameter is left empty (including null) an App Only Context will be created.
+        /// </param>
+        /// <returns>Authenticated SharePoint ClientContext</returns>
+        public ClientContext GetHighTrustCertificateAppAuthenticatedContext(string siteUrl, string clientId, string certificatePath, string certificatePassword, string certificateIssuerId, string loginName)
+        {
+            var certPassword = Utilities.EncryptionUtility.ToSecureString(certificatePassword);
+            return GetHighTrustCertificateAppAuthenticatedContext(siteUrl, clientId, certificatePath, certPassword, certificateIssuerId, loginName);
+        }
+
+        /// <summary>
+        /// Returns a SharePoint ClientContext using High Trust Certificate App Only Authentication
+        /// </summary>
+        /// <param name="siteUrl">Site for which the ClientContext object will be instantiated</param>
+        /// <param name="clientId">The SharePoint Client ID</param>
+        /// <param name="certificatePath">Full path to the private key certificate (.pfx) used to authenticate</param>
+        /// <param name="certificatePassword">Password used for the private key certificate (.pfx)</param>
+        /// <param name="certificateIssuerId">The IssuerID under which the CER counterpart of the PFX has been registered in SharePoint as a Trusted Security Token issuer</param>
+        /// <param name="loginName">
+        /// Name of the user (login name) on whose behalf to create the access token.
+        /// Supported input formats are SID and User Principal Name (UPN).
+        /// If the parameter is left empty (including null) an App Only Context will be created.
+        /// </param>
+        /// <returns>Authenticated SharePoint ClientContext</returns>
+        public ClientContext GetHighTrustCertificateAppAuthenticatedContext(string siteUrl, string clientId, string certificatePath, SecureString certificatePassword, string certificateIssuerId, string loginName)
+        {
+            var certificate = new X509Certificate2(certificatePath, certificatePassword);
+            return GetHighTrustCertificateAppAuthenticatedContext(siteUrl, clientId, certificate, certificateIssuerId, loginName);
+        }
+
+        /// <summary>
+        /// Returns a SharePoint ClientContext using High Trust Certificate App Only Authentication
+        /// </summary>
+        /// <param name="siteUrl">Site for which the ClientContext object will be instantiated</param>
+        /// <param name="clientId">The SharePoint Client ID</param>
+        /// <param name="storeName">The name of the store for the certificate</param>
+        /// <param name="storeLocation">The location of the store for the certificate</param>
+        /// <param name="thumbPrint">The thumbprint of the certificate to locate in the store</param>
+        /// <param name="certificateIssuerId">The IssuerID under which the CER counterpart of the PFX has been registered in SharePoint as a Trusted Security Token issuer</param>
+        /// <param name="loginName">
+        /// Name of the user (login name) on whose behalf to create the access token.
+        /// Supported input formats are SID and User Principal Name (UPN).
+        /// If the parameter is left empty (including null) an App Only Context will be created.
+        /// </param>
+        /// <returns>Authenticated SharePoint ClientContext</returns>
+        public ClientContext GetHighTrustCertificateAppAuthenticatedContext(string siteUrl, string clientId, StoreName storeName, StoreLocation storeLocation, string thumbPrint, string certificateIssuerId, string loginName)
+        {
+            // Retrieve the certificate from the Windows Certificate Store
+            var cert = Utilities.X509CertificateUtility.LoadCertificate(storeName, storeLocation, thumbPrint);
+            return GetHighTrustCertificateAppAuthenticatedContext(siteUrl, clientId, cert, certificateIssuerId, loginName);
+        }
+
+        /// <summary>
+        /// Returns a SharePoint ClientContext using High Trust Certificate App Only Authentication
+        /// </summary>
+        /// <param name="siteUrl">Site for which the ClientContext object will be instantiated</param>
+        /// <param name="clientId">The SharePoint Client ID</param>
+        /// <param name="certificate">Private key certificate (.pfx) used to authenticate</param>
+        /// <param name="certificateIssuerId">The IssuerID under which the CER counterpart of the PFX has been registered in SharePoint as a Trusted Security Token issuer</param>
+        /// <param name="loginName">
+        /// Name of the user (login name) on whose behalf to create the access token.
+        /// Supported input formats are SID and User Principal Name (UPN).
+        /// If the parameter is left empty (including null) an App Only Context will be created.
+        /// </param>
+        /// <returns>Authenticated SharePoint ClientContext</returns>
+        public ClientContext GetHighTrustCertificateAppAuthenticatedContext(string siteUrl, string clientId, X509Certificate2 certificate, string certificateIssuerId, string loginName)
+        {
+            var siteUri = new Uri(siteUrl);
+            var clientContext = new ClientContext(siteUri);
+#if !ONPREMISES || SP2016 || SP2019
+            clientContext.DisableReturnValueCache = true;
+#endif
+
+            // Feed the TokenHelper the SharePoint information so it doesn't try to fetch it from the config file
+            TokenHelper.Realm = TokenHelper.GetRealmFromTargetUrl(siteUri);
+            TokenHelper.ClientId = clientId;
+            TokenHelper.ClientCertificate = certificate;
+            TokenHelper.IssuerId = certificateIssuerId;
+
+            // Configure the handler to generate the Bearer Access Token on each request and add it to the request
+            clientContext.ExecutingWebRequest += (sender, args) =>
+            {
+                var accessToken = TokenHelper.GetS2SAccessTokenWithUserName(siteUri, loginName);
+                args.WebRequestExecutor.RequestHeaders["Authorization"] = "Bearer " + accessToken;
+            };
+
+            return clientContext;
+        }
 #endif
 
         #endregion
@@ -533,11 +632,12 @@ namespace OfficeDevPnP.Core
         /// <param name="siteUrl">Site for which the ClientContext object will be instantiated</param>
         /// <param name="userPrincipalName">The user id</param>
         /// <param name="userPassword">The user's password as a secure string</param>
+        /// <param name="environment">SharePoint environment being used</param>
         /// <returns>Client context object</returns>
-        public ClientContext GetAzureADCredentialsContext(string siteUrl, string userPrincipalName, SecureString userPassword)
+        public ClientContext GetAzureADCredentialsContext(string siteUrl, string userPrincipalName, SecureString userPassword, AzureEnvironment environment = AzureEnvironment.Production)
         {
             string password = new System.Net.NetworkCredential(string.Empty, userPassword).Password;
-            return GetAzureADCredentialsContext(siteUrl, userPrincipalName, password);
+            return GetAzureADCredentialsContext(siteUrl, userPrincipalName, password, environment);
         }
 
         /// <summary>
@@ -546,8 +646,9 @@ namespace OfficeDevPnP.Core
         /// <param name="siteUrl">Site for which the ClientContext object will be instantiated</param>
         /// <param name="userPrincipalName">The user id</param>
         /// <param name="userPassword">The user's password as a string</param>
+        /// <param name="environment">SharePoint environment being used</param>
         /// <returns>Client context object</returns>
-        public ClientContext GetAzureADCredentialsContext(string siteUrl, string userPrincipalName, string userPassword)
+        public ClientContext GetAzureADCredentialsContext(string siteUrl, string userPrincipalName, string userPassword, AzureEnvironment environment = AzureEnvironment.Production)
         {
             Log.Info(Constants.LOGGING_SOURCE, CoreResources.AuthenticationManager_GetContext, siteUrl);
             Log.Debug(Constants.LOGGING_SOURCE, CoreResources.AuthenticationManager_TenantUser, userPrincipalName);
@@ -561,7 +662,7 @@ namespace OfficeDevPnP.Core
 #endif
             clientContext.ExecutingWebRequest += (sender, args) =>
             {
-                EnsureAzureADCredentialsToken(resourceUri, userPrincipalName, userPassword);
+                EnsureAzureADCredentialsToken(resourceUri, userPrincipalName, userPassword, environment);
                 args.WebRequestExecutor.RequestHeaders["Authorization"] = "Bearer " + azureADCredentialsToken;
             };
 
@@ -585,11 +686,12 @@ namespace OfficeDevPnP.Core
         /// <param name="resourceUri">Resouce to request access for</param>
         /// <param name="username">User id</param>
         /// <param name="password">Password</param>
+        /// <param name="environment">SharePoint environment being used</param>
         /// <returns>Acces token</returns>
-        public static async Task<string> AcquireTokenAsync(string resourceUri, string username, string password)
+        public static async Task<string> AcquireTokenAsync(string resourceUri, string username, string password, AzureEnvironment environment)
         {
             HttpClient client = new HttpClient();
-            string tokenEndpoint = "https://login.microsoftonline.com/common/oauth2/token";
+            string tokenEndpoint = $"{new AuthenticationManager().GetAzureADLoginEndPoint(environment)}/common/oauth2/token";
 
             var body = $"resource={resourceUri}&client_id=9bc3ab49-b65d-410a-85ad-de819febfddc&grant_type=password&username={username}&password={password}";
             var stringContent = new StringContent(body, System.Text.Encoding.UTF8, "application/x-www-form-urlencoded");
@@ -604,7 +706,7 @@ namespace OfficeDevPnP.Core
             return token;
         }
 
-        private void EnsureAzureADCredentialsToken(string resourceUri, string userPrincipalName, string userPassword)
+        private void EnsureAzureADCredentialsToken(string resourceUri, string userPrincipalName, string userPassword, AzureEnvironment environment)
         {
             if (azureADCredentialsToken == null)
             {
@@ -613,7 +715,7 @@ namespace OfficeDevPnP.Core
                     if (azureADCredentialsToken == null)
                     {
 
-                        String accessToken = Task.Run(() => AcquireTokenAsync(resourceUri, userPrincipalName, userPassword)).GetAwaiter().GetResult();
+                        String accessToken = Task.Run(() => AcquireTokenAsync(resourceUri, userPrincipalName, userPassword, environment)).GetAwaiter().GetResult();
                         ThreadPool.QueueUserWorkItem(obj =>
                         {
                             try
@@ -920,7 +1022,7 @@ namespace OfficeDevPnP.Core
             {
                 case AzureEnvironment.Production:
                     {
-                        return "https://login.windows.net";
+                        return "https://login.microsoftonline.com";
                     }
                 case AzureEnvironment.Germany:
                     {
@@ -940,7 +1042,7 @@ namespace OfficeDevPnP.Core
                     }
                 default:
                     {
-                        return "https://login.windows.net";
+                        return "https://login.microsoftonline.com";
                     }
             }
         }
@@ -1155,7 +1257,7 @@ namespace OfficeDevPnP.Core
                 throw new Exception("Endpoint does not use ADFS for authentication.", ex);
             }
         }
-		
+
         #endregion
 #endif
     }

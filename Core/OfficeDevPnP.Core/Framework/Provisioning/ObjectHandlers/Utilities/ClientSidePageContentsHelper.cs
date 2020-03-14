@@ -5,6 +5,7 @@ using OfficeDevPnP.Core.Framework.Provisioning.Connectors;
 using OfficeDevPnP.Core.Framework.Provisioning.Model;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -12,13 +13,27 @@ using System.Web;
 
 namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
 {
-#if !ONPREMISES
+#if !SP2013 && !SP2016
     /// <summary>
     /// Helper class holding public methods that used by the client side page object handler. The purpose is to be able to reuse these public methods in a extensibility provider
     /// </summary>
     public class ClientSidePageContentsHelper
     {
         private const string ContentTypeIdField = "ContentTypeId";
+
+        public void ExtractClientSidePage(Web web, ProvisioningTemplate template, ProvisioningTemplateCreationInformation creationInfo, PnPMonitoredScope scope, string pageUrl, string pageName, bool isHomePage, bool isTemplate = false)
+        {
+            PageToExport page = new PageToExport()
+            {
+                PageName = pageName,
+                PageUrl = pageUrl,
+                IsHomePage = isHomePage,
+                IsTemplate = isTemplate,
+                IsTranslation = false
+            };
+
+            ExtractClientSidePage(web, template, creationInfo, scope, page);
+        }
 
         /// <summary>
         /// Extracts a client side page
@@ -27,18 +42,20 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
         /// <param name="template">Current provisioning template that will hold the extracted page</param>
         /// <param name="creationInfo">ProvisioningTemplateCreationInformation passed into the provisioning engine</param>
         /// <param name="scope">Scope used for logging</param>
-        /// <param name="pageUrl">Url of the page to extract</param>
-        /// <param name="pageName">Name of the page to extract</param>
-        /// <param name="isHomePage">Is this a home page?</param>
-        /// <param name="isTemplate">Is this a template?</param>
-        public void ExtractClientSidePage(Web web, ProvisioningTemplate template, ProvisioningTemplateCreationInformation creationInfo, PnPMonitoredScope scope, string pageUrl, string pageName, bool isHomePage, bool isTemplate = false)
+        /// <param name="page">page to be exported</param>
+        public void ExtractClientSidePage(Web web, ProvisioningTemplate template, ProvisioningTemplateCreationInformation creationInfo, PnPMonitoredScope scope, PageToExport page)
         {
+            bool excludeAuthorInformation = false;
+            if(creationInfo.ExtractConfiguration != null && creationInfo.ExtractConfiguration.Pages != null)
+            {
+                excludeAuthorInformation = creationInfo.ExtractConfiguration.Pages.ExcludeAuthorInformation;
+            }
             try
             {
                 List<string> errorneousOrNonImageFileGuids = new List<string>();
-                var pageToExtract = web.LoadClientSidePage(pageName);
+                var pageToExtract = web.LoadClientSidePage(page.PageName);
 
-                if (pageToExtract.Sections.Count == 0 && pageToExtract.Controls.Count == 0 && isHomePage)
+                if (pageToExtract.Sections.Count == 0 && pageToExtract.Controls.Count == 0 && page.IsHomePage)
                 {
                     // This is default home page which was not customized...and as such there's no page definition stored in the list item. We don't need to extact this page.
                     scope.LogInfo(CoreResources.Provisioning_ObjectHandlers_ClientSidePageContents_DefaultHomePage);
@@ -54,24 +71,33 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                     }
 
                     var isNews = pageToExtract.LayoutType != Pages.ClientSidePageLayoutType.Home && int.Parse(pageToExtract.PageListItem[OfficeDevPnP.Core.Pages.ClientSidePage.PromotedStateField].ToString()) == (int)Pages.PromotedState.Promoted;
-                    // Create the page
-                    var extractedPageInstance = new ClientSidePage()
-                    {
-                        PageName = pageName,
-                        PromoteAsNewsArticle = isNews,
-                        PromoteAsTemplate = isTemplate,
-                        Overwrite = true,
-                        Publish = true,
-                        Layout = pageToExtract.LayoutType.ToString(),
-                        EnableComments = !pageToExtract.CommentsDisabled,
-                        Title = pageToExtract.PageTitle,
-                        ContentTypeID = !pageContentTypeId.Equals(BuiltInContentTypeId.ModernArticlePage, StringComparison.InvariantCultureIgnoreCase) ? pageContentTypeId : null,
-                        ThumbnailUrl = pageToExtract.ThumbnailUrl != null ? TokenizeJsonControlData(web, pageToExtract.ThumbnailUrl) : ""
-                    };
 
+                    // Create the page;
+                    BaseClientSidePage extractedPageInstance;
+                    if (page.IsTranslation)
+                    {
+                        extractedPageInstance = new TranslatedClientSidePage();
+                        (extractedPageInstance as TranslatedClientSidePage).PageName = page.PageName;
+                    }
+                    else
+                    {
+                        extractedPageInstance = new ClientSidePage();
+                        (extractedPageInstance as ClientSidePage).PageName = page.PageName;
+                    }
+
+                    extractedPageInstance.PromoteAsNewsArticle = isNews;
+                    extractedPageInstance.PromoteAsTemplate = page.IsTemplate;
+                    extractedPageInstance.Overwrite = true;
+                    extractedPageInstance.Publish = true;
+                    extractedPageInstance.Layout = pageToExtract.LayoutType.ToString();
+                    extractedPageInstance.EnableComments = !pageToExtract.CommentsDisabled;
+                    extractedPageInstance.Title = pageToExtract.PageTitle;
+                    extractedPageInstance.ContentTypeID = !pageContentTypeId.Equals(BuiltInContentTypeId.ModernArticlePage, StringComparison.InvariantCultureIgnoreCase) ? pageContentTypeId : null;
+                    extractedPageInstance.ThumbnailUrl = pageToExtract.ThumbnailUrl != null ? TokenizeJsonControlData(web, pageToExtract.ThumbnailUrl) : "";
 
                     if (pageToExtract.PageHeader != null)
                     {
+                        
                         var extractedHeader = new ClientSidePageHeader()
                         {
                             Type = (ClientSidePageHeaderType)Enum.Parse(typeof(Pages.ClientSidePageHeaderType), pageToExtract.PageHeader.Type.ToString()),
@@ -79,15 +105,18 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                             TranslateX = pageToExtract.PageHeader.TranslateX,
                             TranslateY = pageToExtract.PageHeader.TranslateY,
                             LayoutType = (ClientSidePageHeaderLayoutType)Enum.Parse(typeof(Pages.ClientSidePageHeaderLayoutType), pageToExtract.PageHeader.LayoutType.ToString()),
+#if !SP2019
                             TextAlignment = (ClientSidePageHeaderTextAlignment)Enum.Parse(typeof(Pages.ClientSidePageHeaderTitleAlignment), pageToExtract.PageHeader.TextAlignment.ToString()),
                             ShowTopicHeader = pageToExtract.PageHeader.ShowTopicHeader,
                             ShowPublishDate = pageToExtract.PageHeader.ShowPublishDate,
                             TopicHeader = pageToExtract.PageHeader.TopicHeader,
                             AlternativeText = pageToExtract.PageHeader.AlternativeText,
-                            Authors = pageToExtract.PageHeader.Authors,
-                            AuthorByLine = pageToExtract.PageHeader.AuthorByLine,
-                            AuthorByLineId = pageToExtract.PageHeader.AuthorByLineId,
+                            Authors = !excludeAuthorInformation ? pageToExtract.PageHeader.Authors : "",
+                            AuthorByLine = !excludeAuthorInformation ? pageToExtract.PageHeader.AuthorByLine : "",
+                            AuthorByLineId = !excludeAuthorInformation ? pageToExtract.PageHeader.AuthorByLineId : -1
+#endif
                         };
+
                         extractedPageInstance.Header = extractedHeader;
 
                         // Add the page header image to template if that was requested
@@ -98,7 +127,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                     }
 
                     // define reusable RegEx pre-compiled objects
-                    string guidPattern = "\"[a-fA-F0-9]{8}-([a-fA-F0-9]{4}-){3}[a-fA-F0-9]{12}\"";
+                    string guidPattern = "\"{?[a-fA-F0-9]{8}-([a-fA-F0-9]{4}-){3}[a-fA-F0-9]{12}}?\"";
                     Regex regexGuidPattern = new Regex(guidPattern, RegexOptions.Compiled);
 
                     string guidPatternEncoded = "=[a-fA-F0-9]{8}(?:%2D|-)([a-fA-F0-9]{4}(?:%2D|-)){3}[a-fA-F0-9]{12}";
@@ -166,6 +195,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                             case Pages.CanvasSectionTemplate.OneColumnFullWidth:
                                 sectionInstance.Type = CanvasSectionType.OneColumnFullWidth;
                                 break;
+#if !SP2019
                             case Pages.CanvasSectionTemplate.OneColumnVerticalSection:
                                 sectionInstance.Type = CanvasSectionType.OneColumnVerticalSection;
                                 break;
@@ -181,6 +211,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                             case Pages.CanvasSectionTemplate.ThreeColumnVerticalSection:
                                 sectionInstance.Type = CanvasSectionType.ThreeColumnVerticalSection;
                                 break;
+#endif
                             default:
                                 sectionInstance.Type = CanvasSectionType.OneColumn;
                                 break;
@@ -220,6 +251,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                                         case Pages.DefaultClientSideWebParts.ContentRollup:
                                             controlInstance.Type = WebPartType.ContentRollup;
                                             break;
+#if !SP2019
                                         case Pages.DefaultClientSideWebParts.BingMap:
                                             controlInstance.Type = WebPartType.BingMap;
                                             break;
@@ -229,6 +261,25 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                                         case Pages.DefaultClientSideWebParts.CallToAction:
                                             controlInstance.Type = WebPartType.CallToAction;
                                             break;
+                                        case Pages.DefaultClientSideWebParts.News:
+                                            controlInstance.Type = WebPartType.News;
+                                            break;
+                                        case Pages.DefaultClientSideWebParts.PowerBIReportEmbed:
+                                            controlInstance.Type = WebPartType.PowerBIReportEmbed;
+                                            break;
+                                        case Pages.DefaultClientSideWebParts.Sites:
+                                            controlInstance.Type = WebPartType.Sites;
+                                            break;
+                                        case Pages.DefaultClientSideWebParts.GroupCalendar:
+                                            controlInstance.Type = WebPartType.GroupCalendar;
+                                            break;
+                                        case Pages.DefaultClientSideWebParts.MicrosoftForms:
+                                            controlInstance.Type = WebPartType.MicrosoftForms;
+                                            break;
+                                        case Pages.DefaultClientSideWebParts.ClientWebPart:
+                                            controlInstance.Type = WebPartType.ClientWebPart;
+                                            break;
+#endif
                                         case Pages.DefaultClientSideWebParts.ContentEmbed:
                                             controlInstance.Type = WebPartType.ContentEmbed;
                                             break;
@@ -244,26 +295,17 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                                         case Pages.DefaultClientSideWebParts.LinkPreview:
                                             controlInstance.Type = WebPartType.LinkPreview;
                                             break;
-                                        case Pages.DefaultClientSideWebParts.News:
-                                            controlInstance.Type = WebPartType.News;
-                                            break;
                                         case Pages.DefaultClientSideWebParts.NewsFeed:
                                             controlInstance.Type = WebPartType.NewsFeed;
                                             break;
                                         case Pages.DefaultClientSideWebParts.NewsReel:
                                             controlInstance.Type = WebPartType.NewsReel;
                                             break;
-                                        case Pages.DefaultClientSideWebParts.PowerBIReportEmbed:
-                                            controlInstance.Type = WebPartType.PowerBIReportEmbed;
-                                            break;
                                         case Pages.DefaultClientSideWebParts.QuickChart:
                                             controlInstance.Type = WebPartType.QuickChart;
                                             break;
                                         case Pages.DefaultClientSideWebParts.SiteActivity:
                                             controlInstance.Type = WebPartType.SiteActivity;
-                                            break;
-                                        case Pages.DefaultClientSideWebParts.Sites:
-                                            controlInstance.Type = WebPartType.Sites;
                                             break;
                                         case Pages.DefaultClientSideWebParts.VideoEmbed:
                                             controlInstance.Type = WebPartType.VideoEmbed;
@@ -273,9 +315,6 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                                             break;
                                         case Pages.DefaultClientSideWebParts.Events:
                                             controlInstance.Type = WebPartType.Events;
-                                            break;
-                                        case Pages.DefaultClientSideWebParts.GroupCalendar:
-                                            controlInstance.Type = WebPartType.GroupCalendar;
                                             break;
                                         case Pages.DefaultClientSideWebParts.Hero:
                                             controlInstance.Type = WebPartType.Hero;
@@ -298,14 +337,8 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                                         case Pages.DefaultClientSideWebParts.Divider:
                                             controlInstance.Type = WebPartType.Divider;
                                             break;
-                                        case Pages.DefaultClientSideWebParts.MicrosoftForms:
-                                            controlInstance.Type = WebPartType.MicrosoftForms;
-                                            break;
                                         case Pages.DefaultClientSideWebParts.Spacer:
                                             controlInstance.Type = WebPartType.Spacer;
-                                            break;
-                                        case Pages.DefaultClientSideWebParts.ClientWebPart:
-                                            controlInstance.Type = WebPartType.ClientWebPart;
                                             break;
                                         case Pages.DefaultClientSideWebParts.ThirdParty:
                                             controlInstance.Type = WebPartType.Custom;
@@ -314,7 +347,27 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                                             controlInstance.Type = WebPartType.Custom;
                                             break;
                                     }
+                                    if (excludeAuthorInformation)
+                                    {
+#if !SP2019
+                                        if (webPartType == Pages.DefaultClientSideWebParts.News)
+                                        {
+                                            var properties = (control as Pages.ClientSideWebPart).Properties;
+                                            var authorTokens = properties.SelectTokens("$..author").ToList();
+                                            foreach (var authorToken in authorTokens)
+                                            {
+                                                authorToken.Parent.Remove();
+                                            }
+                                            var authorAccountNameTokens = properties.SelectTokens("$..authorAccountName").ToList();
+                                            foreach (var authorAccountNameToken in authorAccountNameTokens)
+                                            {
+                                                authorAccountNameToken.Parent.Remove();
+                                            }
 
+                                            (control as Pages.ClientSideWebPart).PropertiesJson = properties.ToString();
+                                        }
+#endif
+                                    }
                                     string jsonControlData = "\"id\": \"" + (control as Pages.ClientSideWebPart).WebPartId + "\", \"instanceId\": \"" + (control as Pages.ClientSideWebPart).InstanceId + "\", \"title\": " + JsonConvert.ToString((control as Pages.ClientSideWebPart).Title) + ", \"description\": " + JsonConvert.ToString((control as Pages.ClientSideWebPart).Description) + ", \"dataVersion\": \"" + (control as Pages.ClientSideWebPart).DataVersion + "\", \"properties\": " + (control as Pages.ClientSideWebPart).PropertiesJson + "";
 
                                     // set the control properties
@@ -353,7 +406,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                                         Dictionary<string, string> exportedPages = new Dictionary<string, string>();
 
                                         CollectSiteAssetImageFiles(regexSiteAssetUrls, web, untokenizedJsonControlData, fileGuids);
-                                        CollectImageFilesFromGenericGuids(regexGuidPattern, regexGuidPatternEncoded, controlInstance.JsonControlData, fileGuids);
+                                        CollectImageFilesFromGenericGuids(regexGuidPattern, regexGuidPatternEncoded, untokenizedJsonControlData, fileGuids);
 
                                         // Iterate over the found guids to see if they're exportable files
                                         foreach (var uniqueId in fileGuids)
@@ -427,24 +480,51 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                         sectionOrder++;
                     }
 
+#if !SP2019
+                    // Spaces support
+                    if (pageToExtract.LayoutType == Pages.ClientSidePageLayoutType.Spaces && !string.IsNullOrEmpty(pageToExtract.SpaceContent))
+                    {
+                        extractedPageInstance.FieldValues.Add(Pages.ClientSidePage.SpaceContentField, pageToExtract.SpaceContent);
+                    }
+#endif
+
                     // Add the page to the template
-                    template.ClientSidePages.Add(extractedPageInstance);
+                    if (page.IsTranslation)
+                    {
+                        var parentPage = template.ClientSidePages.Where(p => p.PageName == page.SourcePageName).FirstOrDefault();
+                        if (parentPage != null)
+                        {
+                            var translatedPageInstance = (TranslatedClientSidePage)extractedPageInstance;
+                            translatedPageInstance.LCID = new CultureInfo(page.Language).LCID;
+                            parentPage.Translations.Add(translatedPageInstance);
+                        }
+                    }
+                    else
+                    {
+                        var clientSidePageInstance = (ClientSidePage)extractedPageInstance;
+                        if (page.TranslatedLanguages != null && page.TranslatedLanguages.Count > 0)
+                        {
+                            clientSidePageInstance.CreateTranslations = true;
+                            clientSidePageInstance.LCID = Convert.ToInt32(web.EnsureProperty(p => p.Language));
+                        }
+                        template.ClientSidePages.Add(clientSidePageInstance);
+                    }
 
                     // Set the homepage
-                    if (isHomePage)
+                    if (page.IsHomePage)
                     {
                         if (template.WebSettings == null)
                         {
                             template.WebSettings = new WebSettings();
                         }
 
-                        if (pageUrl.StartsWith(web.ServerRelativeUrl, StringComparison.InvariantCultureIgnoreCase))
+                        if (page.PageUrl.StartsWith(web.ServerRelativeUrl, StringComparison.InvariantCultureIgnoreCase))
                         {
-                            template.WebSettings.WelcomePage = pageUrl.Replace(web.ServerRelativeUrl + "/", "");
+                            template.WebSettings.WelcomePage = page.PageUrl.Replace(web.ServerRelativeUrl + "/", "");
                         }
                         else
                         {
-                            template.WebSettings.WelcomePage = pageUrl;
+                            template.WebSettings.WelcomePage = page.PageUrl;
                         }
                     }
                 }
@@ -455,7 +535,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
             }
         }
 
-        #region Helper methods
+                    #region Helper methods
         private static void CollectImageFilesFromGenericGuids(Regex regexGuidPattern, Regex regexGuidPatternEncoded, string jsonControlData, List<Guid> fileGuids)
         {
             // grab all the guids in the already tokenized json and check try to get them as a file
@@ -566,11 +646,21 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
                             }
                         }
 
-                        var file = web.GetFileByServerRelativeUrl(s);
-                        web.Context.Load(file, f => f.UniqueId);
-                        web.Context.ExecuteQueryRetry();
+                        try
+                        {
+                            var file = web.GetFileByServerRelativeUrl(s);
+                            web.Context.Load(file, f => f.UniqueId);
+                            web.Context.ExecuteQueryRetry();
+                            fileGuids.Add(file.UniqueId);
+                        }
+                        catch (Microsoft.SharePoint.Client.ServerException ex)
+                        {
+                            if (ex.ServerErrorTypeName != "System.IO.FileNotFoundException")
+                            {
+                                throw ex;
+                            }
+                        }
 
-                        fileGuids.Add(file.UniqueId);
                     }
                 }
             }
@@ -633,7 +723,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
             }
             else
             {
-                scope.LogError("No connector present to persist homepage");
+                scope.LogError($"No connector present to persist {fileName}.");
             }
         }
 
@@ -701,7 +791,7 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers.Utilities
 
             return json;
         }
-        #endregion
+                    #endregion
     }
 #endif
-}
+                }
