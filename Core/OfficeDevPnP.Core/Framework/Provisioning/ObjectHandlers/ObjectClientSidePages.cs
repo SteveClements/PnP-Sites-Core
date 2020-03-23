@@ -377,7 +377,9 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                 page.SetCustomPageHeader(serverRelativeImageUrl);
                             }
 
-                            page.PageHeader.LayoutType = (Pages.ClientSidePageHeaderLayoutType)Enum.Parse(typeof(ClientSidePageHeaderLayoutType), clientSidePage.Header.LayoutType.ToString());
+                            //page.PageHeader.LayoutType = (Pages.ClientSidePageHeaderLayoutType)Enum.Parse(typeof(ClientSidePageHeaderLayoutType), clientSidePage.Header.LayoutType.ToString());
+                            page.PageHeader.TextAlignment = (Pages.ClientSidePageHeaderTitleAlignment)Enum.Parse(typeof(Pages.ClientSidePageHeaderTitleAlignment), clientSidePage.Header.TextAlignment.ToString());
+
 #if !SP2019
                             page.PageHeader.TextAlignment = (Pages.ClientSidePageHeaderTitleAlignment)Enum.Parse(typeof(ClientSidePageHeaderTextAlignment), clientSidePage.Header.TextAlignment.ToString());
                             page.PageHeader.ShowTopicHeader = clientSidePage.Header.ShowTopicHeader;

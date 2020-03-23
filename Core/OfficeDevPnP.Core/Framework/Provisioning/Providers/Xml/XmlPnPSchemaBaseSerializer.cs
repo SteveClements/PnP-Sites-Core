@@ -80,9 +80,13 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.Providers.Xml
             Boolean result = true;
             xml.Validate(schemas, (o, e) =>
             {
-                exceptions.Add(e.Exception);
-                Diagnostics.Log.Error(e.Exception, "SchemaFormatter", "Template is not valid: {0}", e.Message);
-                result = false;
+                // SC: Known issue...this is not required
+                if (e.Message != "The 'LCID' attribute is not declared.")
+                {
+                    exceptions.Add(e.Exception);
+                    Diagnostics.Log.Error(e.Exception, "SchemaFormatter", "Template is not valid: {0}", e.Message);
+                    result = false;
+                }
             });
 
             return new ValidationResult { IsValid = result, Exceptions = exceptions };
