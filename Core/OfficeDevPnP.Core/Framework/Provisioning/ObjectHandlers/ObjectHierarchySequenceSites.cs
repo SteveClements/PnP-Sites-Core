@@ -513,13 +513,14 @@ namespace OfficeDevPnP.Core.Framework.Provisioning.ObjectHandlers
                                         {
                                             siteTokenParser.AddToken(token);
                                         }
-                                        //}
-                                        //else
-                                        //{
-                                        //    siteTokenParser.Rebase(web, provisioningTemplate);
-                                        //}
-                                        WriteMessage($"Applying Template", ProvisioningMessageType.Progress);
-                                        new SiteToTemplateConversion().ApplyRemoteTemplate(web, provisioningTemplate, provisioningTemplateApplyingInformation, true, siteTokenParser);
+										//}
+										//else
+										//{
+										//    siteTokenParser.Rebase(web, provisioningTemplate);
+										//}
+										string templateIdentifier = String.IsNullOrWhiteSpace(provisioningTemplate.DisplayName) ? provisioningTemplate.Id : provisioningTemplate.DisplayName;
+										WriteMessage($"Applying Template - {templateIdentifier}", ProvisioningMessageType.Progress);
+										new SiteToTemplateConversion().ApplyRemoteTemplate(web, provisioningTemplate, provisioningTemplateApplyingInformation, true, siteTokenParser);
                                     }
                                     else
                                     {
