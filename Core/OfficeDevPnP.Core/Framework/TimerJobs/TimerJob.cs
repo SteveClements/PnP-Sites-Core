@@ -1536,21 +1536,21 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
         /// </summary>
         /// <param name="site">Site Url to create a ClientContext for</param>
         /// <returns>The created ClientContext object. Returns null if no ClientContext was created</returns>
-#if NETSTANDARD2_0
-        protected ClientContext CreateClientContext(string site)
-        {
-            if (AuthenticationType == AuthenticationType.Office365)
-            {
-                return GetAuthenticationManager(site).GetSharePointOnlineAuthenticatedContextTenant(site, username, password);
-            } else if(AuthenticationType == AuthenticationType.NetworkCredentials)
-            {
-                return GetAuthenticationManager(site).GetNetworkCredentialAuthenticatedContext(site, username, password, domain);
-            } else
-            {
-                return null;
-            }
-        }
-#else
+//#if NETSTANDARD2_0
+//        protected ClientContext CreateClientContext(string site)
+//        {
+//            if (AuthenticationType == AuthenticationType.Office365)
+//            {
+//                return GetAuthenticationManager(site).GetSharePointOnlineAuthenticatedContextTenant(site, username, password);
+//            } else if(AuthenticationType == AuthenticationType.NetworkCredentials)
+//            {
+//                return GetAuthenticationManager(site).GetNetworkCredentialAuthenticatedContext(site, username, password, domain);
+//            } else
+//            {
+//                return null;
+//            }
+//        }
+//#else
         protected ClientContext CreateClientContext(string site)
         {
             if (SharePointVersion == 15)
@@ -1561,6 +1561,7 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
                 }
                 else if (AuthenticationType == AuthenticationType.AppOnly)
                 {
+#if !NETSTANDARD2_0
                     if (this.highTrust)
                     {
                         if (this.certificate != null)
@@ -1574,8 +1575,11 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
                     }
                     else
                     {
+#endif
                         return GetAuthenticationManager(site).GetAppOnlyAuthenticatedContext(site, this.realm, this.clientId, this.clientSecret);
+#if !NETSTANDARD2_0
                     }
+#endif
                 }
             }
             else
@@ -1633,7 +1637,7 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
 
             return null;
         }
-#endif
+//#endif
 
         /// <summary>
         /// Resolves a wildcard site Url into a list of actual site Url's
@@ -1650,10 +1654,9 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
             }
             else
             {
-                ClientContext ccEnumerate;
+                ClientContext ccEnumerate = null;
                 //Good, we can use search for user profile and tenant API enumeration for regular sites
 #if !ONPREMISES
-#if !NETSTANDARD2_0
                 if (AuthenticationType == AuthenticationType.AppOnly)
                 {
                     // with the proper tenant scoped permissions one can do search with app-only in SPO
@@ -1663,19 +1666,19 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
                 {
                     if (this.certificate != null)
                     {
-                        ccEnumerate = GetAuthenticationManager(site).GetAzureADAppOnlyAuthenticatedContext(GetTenantAdminSite(site), this.clientId, this.azureTenant, this.certificate);
+                        ccEnumerate = GetAuthenticationManager(site).GetAzureADAppOnlyAuthenticatedContext(GetTenantAdminSite(site), this.clientId, this.azureTenant, this.certificate, this.azureEnvironment);
                     }
                     else
                     {
-                        ccEnumerate = GetAuthenticationManager(site).GetAzureADAppOnlyAuthenticatedContext(GetTenantAdminSite(site), this.clientId, this.azureTenant, this.certificatePath, this.certificatePassword);
+                        ccEnumerate = GetAuthenticationManager(site).GetAzureADAppOnlyAuthenticatedContext(GetTenantAdminSite(site), this.clientId, this.azureTenant, this.certificatePath, this.certificatePassword, this.azureEnvironment);
                     }
                 }
+#if !NETSTANDARD2_0
                 else
                 {
-#endif
-                    ccEnumerate = GetAuthenticationManager(site).GetSharePointOnlineAuthenticatedContextTenant(GetTenantAdminSite(site), EnumerationUser, EnumerationPassword);
-#if !NETSTANDARD2_0
-            }
+                    //ccEnumerate = GetAuthenticationManager(site).GetSharePointOnlineAuthenticatedContextTenant(GetTenantAdminSite(site), EnumerationUser, EnumerationPassword);
+                    ccEnumerate = GetAuthenticationManager(site).GetAzureADCredentialsContext(GetTenantAdminSite(site), EnumerationUser, EnumerationPassword, this.azureEnvironment);
+                }
 #endif
                 Tenant tenant = new Tenant(ccEnumerate);
                 SiteEnumeration.Instance.ResolveSite(tenant, site, resolvedSites, this.excludeOD4B);
@@ -1717,9 +1720,9 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
                 yield return currentUrl;
             }
         }
-        #endregion
+#endregion
 
-        #region Helper methods
+#region Helper methods
         /// <summary>
         /// Verifies if the passed Url has a valid structure
         /// </summary>
@@ -1761,7 +1764,9 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
             {
                 Uri u = new Uri(GetTopLevelSite(site.Replace("*", "")));
                 string tenantName = u.DnsSafeHost.Split(new string[] { "." }, StringSplitOptions.RemoveEmptyEntries)[0];
-                return $"https://{tenantName}-admin.sharepoint.com";
+                var parts = u.DnsSafeHost.Split(new string[] { "." }, StringSplitOptions.RemoveEmptyEntries);
+                string domainExtension = parts[parts.Length - 1];
+                return $"https://{tenantName}-admin.sharepoint.{domainExtension}";
             }
         }
 
@@ -1901,6 +1906,6 @@ namespace OfficeDevPnP.Core.Framework.TimerJobs
                 return false;
             }
         }
-        #endregion
+#endregion
     }
 }
